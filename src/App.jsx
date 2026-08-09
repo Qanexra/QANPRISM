@@ -79,9 +79,9 @@ function App() {
         </div>
 
         <div className="menu-actions">
-          <button onClick={() => appWindow.minimize()}><Minus size={14} /></button>
-          <button onClick={() => appWindow.toggleMaximize()}><Square size={12} /></button>
-          <button onClick={() => appWindow.close()} className="close-btn"><X size={14} /></button>
+          <button onClick={async () => { try { await appWindow.minimize(); } catch(e) { alert('Minimize Error: ' + e); } }}><Minus size={14} /></button>
+          <button onClick={async () => { try { await appWindow.toggleMaximize(); } catch(e) { alert('Maximize Error: ' + e); } }}><Square size={12} /></button>
+          <button onClick={async () => { try { await appWindow.close(); } catch(e) { alert('Close Error: ' + e); } }} className="close-btn"><X size={14} /></button>
         </div>
       </nav>
 

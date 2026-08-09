@@ -7,12 +7,20 @@ All notable changes to QanPrism will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Real LLM Inference Integration: Replaced mock agent responses with actual OpenAI-compatible `/v1/chat/completions` HTTP requests.
+- LM Studio Auto-Discovery: Added API URL configuration panel with dynamic fetching of installed models (`/v1/models`).
+- Frameless Window Mode: Implemented custom React-based title bar with native Tauri drag regions and window control buttons.
 - Initial release of QanPrism browser engine (v0.1.0)
 - Tauri + Rust native core with ~80MB baseline memory
 - Unified AI router supporting Ollama, LM Studio, and cloud APIs
 - Financial data table extraction from web pages
 - SEC EDGAR filing parser integration
 - Plugin system for extensibility
+
+### Fixed
+- Granted strict Tauri v2 capabilities for window management (`allow-minimize`, `allow-toggle-maximize`, `allow-close`).
+- Corrected dummy documentation emails to official `raymond@qanexra.com` contact.
+- Scrubbed sensitive AI system prompts and configuration from public Git history.
 
 ### Planned for v0.2.0
 - Smart tab hibernation engine
