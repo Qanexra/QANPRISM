@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: "QanPrism Discord Community"
+    url: "https://discord.gg/qanexra"
+    about: "General questions and discussions. Please join our community!"
+  - name: "Feature Requests Discussion"
+    url: "https://github.com/Qanexra/qanprism/discussions/new?category=feature-requests"
+    about: "Have an idea for a new feature? Start a discussion here!"
