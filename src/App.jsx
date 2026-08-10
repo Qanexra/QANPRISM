@@ -101,7 +101,10 @@ function App() {
         </div>
 
         {/* Right sidebar with AI agent */}
-        <AgentSidebar aiClient={aiClient} />
+        <AgentSidebar 
+          aiClient={aiClient} 
+          activeTabUrl={tabs.find(t => t.id === currentTabId)?.url || 'https://example.com'} 
+        />
 
         {/* Memory monitor inside workspace overlay */}
         <MemoryMonitor />

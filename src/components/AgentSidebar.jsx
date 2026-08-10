@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Send, Bot, Database, Zap, RefreshCw } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 
-const AgentSidebar = ({ aiClient }) => {
+const AgentSidebar = ({ aiClient, activeTabUrl }) => {
   const [input, setInput] = useState('');
   const [activeAgent, setActiveAgent] = useState('Ollama');
   const [apiUrl, setApiUrl] = useState('http://localhost:11434');
@@ -79,6 +80,17 @@ const AgentSidebar = ({ aiClient }) => {
     setIsThinking(true);
 
     try {
+      // 1. Fetch raw HTML using our native Rust command (bypasses CORS)
+      let pageText = "No page content available.";
+      try {
+        const rawHtml = await invoke('fetch_page_context', { url: activeTabUrl });
+        // Parse the HTML silently in the browser engine to strip all code tags
+        const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
+        pageText = doc.body.innerText.trim().substring(0, 15000); // Limit to 15k chars for context window
+      } catch (ctxErr) {
+        console.error("Failed to fetch page context:", ctxErr);
+      }
+
       const completionsUrl = apiUrl.endsWith('/v1') ? `${apiUrl}/chat/completions` : `${apiUrl}/v1/chat/completions`;
       
       // Filter out system messages that are just UI info before sending to LLM
@@ -87,15 +99,18 @@ const AgentSidebar = ({ aiClient }) => {
         content: m.content
       }));
 
+      // Inject the active page context as a silent system message right before the history
+      const contextMessage = { 
+        role: 'system', 
+        content: `You are QanPrism, a helpful local AI assistant.\nThe user is currently looking at this webpage: ${activeTabUrl}\n\nHere is the extracted text content of the page:\n---\n${pageText}\n---\nUse this context to answer their questions accurately.` 
+      };
+
       const response = await fetch(completionsUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: selectedModel || 'default',
-          messages: [
-            { role: 'system', content: 'You are QanPrism, a helpful local AI assistant.' },
-            ...apiMessages
-          ]
+          messages: [contextMessage, ...apiMessages]
         })
       });
 

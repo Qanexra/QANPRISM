@@ -1,7 +1,7 @@
 {
   "name": "qanprism",
   "version": "0.1.0",
-  "description": "The Open-Source, Low-RAM AI Agent Browser for Quantitative Research & Financial Intelligence by Qanexra",
+  "description": "Low-RAM open-source browser with local AI agent and decentralized livestreaming infrastructure by Qanexra",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
@@ -12,12 +12,13 @@
   "keywords": [
     "browser",
     "ai-agent",
-    "quantitative-finance",
+    "decentralized",
+    "livestreaming",
+    "p2p",
     "low-ram",
     "tauri",
     "rust",
     "ollama",
-    "deepseek",
     "qanexra"
   ],
   "author": "Qanexra <qanexra.est2025@gmail.com>",

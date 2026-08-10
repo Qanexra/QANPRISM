@@ -61,5 +61,7 @@ local.env
 
 # AI Agent Configuration
 .claude/
+.codegraph/
+.gitnexus/
 AGENTS.md
 CLAUDE.md

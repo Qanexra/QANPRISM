@@ -1,111 +1,61 @@
-# QanPrism Roadmap 🗺️
+# QanPrism Roadmap
 
-This document outlines the planned development timeline for QanPrism.
-
----
-
-## v0.2.0 (Q4 2024) - Smart Features
-
-### Memory Management
-- [ ] Automatic tab hibernation engine
-- [ ] Per-tab memory budgeting
-- [ ] Real-time memory monitoring dashboard
-
-### Security Enhancements
-- [ ] Encrypted API key vault implementation
-- [ ] Session persistence with encryption
-- [ ] Biometric authentication integration (Windows Hello, Touch ID)
-
-### Data Connectors
-- [ ] Bloomberg Terminal API connector
-- [ ] Polygon.io stock data feed
-- [ ] TradingView chart export enhancement
+Development is organized into three phases. We are currently in Phase 1.
 
 ---
 
-## v0.3.0 (Q1 2025) - Advanced AI Integration
+## Phase 1 — Browser (Current)
 
-### Multi-Model Support
-- [ ] Native support for multiple simultaneous models
-- [ ] Model auto-switching based on task type
-- [ ] Local model quantization optimization
+Ship a functional, low-RAM browser with a built-in local AI agent.
 
-### Agent Capabilities
-- [ ] Cross-tab synthesis commands
-- [ ] Financial sentiment analysis
-- [ ] Automatic earnings call transcript parsing
-
----
-
-## v0.4.0 (Q2 2025) - Enterprise Features
-
-### Security & Compliance
-- [ ] SOC 2 Type II certification preparation
-- [ ] Audit logging system
-- [ ] GDPR compliance tools
-- [ ] HIPAA configuration options
-
-### Collaboration
-- [ ] Multi-user workspaces
-- [ ] Shared research notebooks
-- [ ] Team annotation features
+- [x] Tauri + Rust native shell with frameless window
+- [x] Custom tab system with drag-to-move title bar
+- [x] Local AI integration (Ollama, LM Studio)
+- [x] Auto-discovery of installed models via API
+- [x] Page context injection into LLM (Rust-side HTML fetch)
+- [ ] Tab hibernation for idle tabs
+- [ ] Encrypted local API key storage
+- [ ] Bookmark and session management
+- [ ] Extension/plugin system
 
 ---
 
-## v0.5.0 (Q3 2025) - Plugin Ecosystem
+## Phase 2 — Decentralized Livestreaming Protocol
 
-### Official Plugin Marketplace
-- [ ] Plugin repository with versioning
-- [ ] Plugin review and certification process
-- [ ] Built-in plugin manager UI
+Build a peer-to-peer streaming layer where every QanPrism browser instance acts as a relay node.
 
-### Scripting System
-- [ ] JavaScript automation API
-- [ ] Python script execution sandbox
-- [ ] Visual workflow builder (low-code)
+- [ ] WebRTC-based P2P mesh networking
+- [ ] Chunk-based video distribution across nodes
+- [ ] DHT (Distributed Hash Table) for stream discovery
+- [ ] NAT traversal and relay fallback
+- [ ] Basic streamer dashboard inside the browser
+- [ ] Viewer UI with adaptive bitrate from nearest peers
+- [ ] No central server — streams cannot be taken down by any single entity
 
----
-
-## v1.0.0 (Q4 2025) - Stable Release
-
-### Core Improvements
-- [ ] Production-hardened Tauri core
-- [ ] Optimized memory management (target: <60MB baseline)
-- [ ] Native mobile support (iOS/Android via WebView)
-
-### Performance Goals
-- Baseline memory: ~60MB
-- Tab loading time: <1 second
-- AI response time: <5 seconds (local models)
+The motivation: centralized platforms (Facebook, TikTok, YouTube) have the power to interrupt or block any livestream at any time. A decentralized network removes that single point of failure.
 
 ---
 
-## Long-term Vision (2026+)
+## Phase 3 — Encrypted P2P Infrastructure
 
-### Advanced Features
-- [ ] Built-in backtesting engine
-- [ ] Algorithmic trading integration
-- [ ] Real-time market data streaming
-- [ ] Automated research report generation
+Harden the network for production scale and add privacy guarantees.
 
-### Ecosystem Expansion
-- [ ] Official VS Code extension
-- [ ] Jupyter notebook integration
-- [ ] Slack/Discord bot integration
-- [ ] API for third-party tools
+- [ ] End-to-end encrypted streams
+- [ ] Onion-style routing for streamer anonymity
+- [ ] Reputation system for node reliability
+- [ ] Incentive layer for relay nodes (optional tokenomics)
+- [ ] Mobile support (iOS/Android)
+- [ ] Cross-platform desktop builds (Windows, macOS, Linux)
 
 ---
 
-## Backlog - Nice to Have
+## Backlog
 
-- [ ] Dark theme customization
-- [ ] Custom keyboard shortcut manager
-- [ ] Built-in PDF editor
-- [ ] Screenshot annotation tool
-- [ ] Research paper management system
+- [ ] Multi-model simultaneous inference
+- [ ] Financial data connector plugins (SEC, Bloomberg)
+- [ ] Built-in PDF reader and annotation
+- [ ] Research notebook with cross-tab synthesis
 
 ---
 
-*Last updated: August 2024*
-
-For feature requests, please submit a GitHub Issue in the [Issues](../../.github/issues) tab.
+For feature requests, open a GitHub Issue.

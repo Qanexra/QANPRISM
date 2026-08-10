@@ -1,180 +1,127 @@
-# QanPrism 💎
+# QanPrism
 
-> **The Open-Source, Low-RAM AI Agent Browser for Quantitative Research & Financial Intelligence.**  
-> Powered by **Qanexra**.
+> A low-RAM, open-source browser with a built-in local AI agent — and the foundation for a decentralized livestreaming network where every user is a node.
+>
+> By **Qanexra**.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg)]()
-[![Tauri](https://img.shields.io/badge/Engine-Tauri%20%2B%20Rust-orange.svg)](https://tauri.app)
-[![AI Integration](https://img.shields.io/badge/AI-Ollama%20%7C%20DeepSeek%20%7C%20OpenAI-purple.svg)]()
+
+[English](./README.md) | [Tieng Viet](./README_VI.md)
 
 ---
 
-## 🌟 Overview
+## What is QanPrism
 
-**QanPrism** is a next-generation, high-efficiency web browser engineered specifically for quantitative analysts, financial researchers, hedge funds, and traders.
+QanPrism is a lightweight web browser built on Tauri and Rust. It uses your operating system's native web engine instead of bundling its own, which drops the memory footprint to around 30-80 MB — roughly 90% less than Chrome.
 
-Standard web browsers like Google Chrome consume gigabytes of RAM per window, slowing down workstation performance alongside heavy financial terminals, Excel, and local Python models. Furthermore, mainstream browsers lock users into closed AI ecosystems without options for privacy-compliant, local LLMs.
+It ships with a built-in AI sidebar that connects to local models running on your machine (Ollama, LM Studio) or cloud APIs (DeepSeek, OpenAI). The agent can read the page you are currently looking at and answer questions about it, extract data from tables, or help with research.
 
-**QanPrism** solves these challenges by combining an **ultra-lightweight browser shell (Tauri + Rust)** with a **modular AI agent architecture** supporting both local models (Ollama, LM Studio) and cloud provider APIs (DeepSeek, OpenAI, Anthropic, OpenRouter).
+But QanPrism is not just a browser.
 
----
+## The Bigger Picture
 
-## 🔥 Key Features
+The long-term vision is to build a **decentralized livestreaming network** on top of the browser. Every person running QanPrism also contributes as a relay node in a peer-to-peer streaming mesh. No single company controls the infrastructure. No one can pull the plug on a livestream because there is no central server to shut down.
 
-### 🚀 1. Ultra-Low RAM Footprint
-* **Native WebEngine Core**: Powered by Rust & Tauri (`WebView2` on Windows, `WebKit` on macOS/Linux).
-* **Baseline Memory**: ~30 MB - 80 MB (Up to **90% less RAM** than Google Chrome).
-* **Smart Tab Hibernation**: Automatically suspends background tabs during heavy data processing sessions.
+This idea came from watching what happened during Mrs. Hang's livestream sessions in Vietnam — platforms like Facebook, TikTok, and YouTube repeatedly interrupted and blocked her streams because they had the power to do so. A truly decentralized network removes that single point of failure entirely.
 
-### 🤖 2. Bring Your Own AI (BYO-AI)
-* **100% Local Models**: Full support for Ollama, LM Studio, llama.cpp, and vLLM (`localhost:11434`, `localhost:1234`).
-* **Cloud API Integrations**: DeepSeek, OpenAI, Anthropic, Grok, OpenRouter, or custom OpenAI-compatible endpoints.
-* **Privacy & Compliance**: Air-gapped mode ensures sensitive research and queries never leave your local workstation.
-
-### 📊 3. Quantitative Financial Workflows
-* **1-Click Table to Data**: Hover over any HTML data table (Yahoo Finance, SEC EDGAR, Investing.com) and export instantly to **CSV, JSON, Parquet, or Pandas DataFrame**.
-* **SEC Filing Intelligence**: Automated parsing of 10-K, 10-Q, and earnings call transcripts with footnoted table extraction.
-* **Multi-Tab Cross Synthesis**: Compare financials across multiple open tabs with simple prompt commands.
-
-### 🔌 4. Extensible Data Connector Engine
-Pluggable data layer for both **free** and **paid** financial data sources:
-* **Free Connectors**: SEC EDGAR, Yahoo Finance, FRED Economic Data, Stooq, Web Scrapers.
-* **Paid Connectors**: Bloomberg Terminal, Refinitiv Eikon, Polygon.io, TradingView APIs, IEX Cloud.
+Phase 1 is the browser. Phase 2 is the streaming protocol.
 
 ---
 
-## 🏗️ Architecture
+## Features
+
+**Browser**
+- Native web engine (WebView2 on Windows, WebKit on macOS/Linux)
+- Baseline memory: 30-80 MB
+- Custom frameless UI with integrated tabs
+
+**Local AI Agent**
+- Supports Ollama, LM Studio, and any OpenAI-compatible API
+- Auto-discovers models installed on your machine
+- Reads the active page and injects context into the LLM
+- Zero API cost when running local models
+
+**Data Extraction**
+- Export HTML tables to CSV, JSON, or Parquet
+- SEC filing parser (10-K, 10-Q)
+- Cross-tab data comparison
+
+---
+
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                       QanPrism UI                           │
-│           (React / Svelte + Address Bar + Agent Sidebar)    │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-               ┌───────────────┴───────────────┐
-               ▼                               ▼
-    ┌─────────────────────┐         ┌─────────────────────┐
-    │     Tauri Core      │         │   QanPrism Agent    │
-    │ (Rust / Low RAM IPC)│         │ (DOM Parser / CDP)  │
-    └─────────────────────┘         └──────────┬──────────┘
-                                               │
-                                    ┌──────────▼──────────┐
-                                    │ Unified AI Router   │
-                                    │ (OpenAI Protocol)   │
-                                    └──────────┬──────────┘
-                                               │
-                         ┌─────────────────────┴─────────────────────┐
-                         ▼                                           ▼
-            ┌────────────────────────┐                  ┌────────────────────────┐
-            │   Local LLMs (Ollama)  │                  │  Cloud APIs (DeepSeek) │
-            └────────────────────────┘                  └────────────────────────┘
+QanPrism UI (React + Vite)
+        |
+   Tauri Core (Rust)
+        |
+   +----+----+
+   |         |
+ WebView   AI Router (OpenAI protocol)
+             |
+        +----+----+
+        |         |
+   Local LLMs   Cloud APIs
+  (Ollama/LM)   (DeepSeek/OpenAI)
 ```
 
 ---
 
-## 🛠️ Quick Start & Installation
+## Getting Started
 
-### Prerequisites
-* [Node.js](https://nodejs.org/) (v18+)
-* [Rust](https://www.rust-lang.org/tools/install) (latest stable)
-* [Ollama](https://ollama.com/) *(Optional, for running local AI models)*
+**Prerequisites**
+- [Node.js](https://nodejs.org/) v18 or later
+- [Rust](https://www.rust-lang.org/tools/install) stable toolchain
+- [Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/) (optional, for local AI)
 
-### Development Setup
+**Development**
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/Qanexra/qanprism.git
-cd qanprism
-
-# 2. Install frontend dependencies
+git clone https://github.com/Qanexra/QANPRISM.git
+cd QANPRISM
 npm install
-
-# 3. Run in development mode
 npm run tauri dev
 ```
 
-### Building for Production
+**Build for production**
 
 ```bash
-# Build distributable installer
 npm run tauri build
-
-# Find installer in dist/ directory
-ls dist/
 ```
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [USAGE.md](./USAGE.md) | Complete user guide with all features |
-| [QUICKSTART.md](./QUICKSTART.md) | Get started in 5 minutes |
-| [API.md](./API.md) | Developer API reference |
-| [DEVELOPMENT.md](./DEVELOPMENT.md) | Development workflow guide |
-| [CONTRIBUTING.md](./CONTRIBUTING.md) | Contribution guidelines |
-| [SECURITY.md](./SECURITY.md) | Security policy and best practices |
-| [ROADMAP.md](./ROADMAP.md) | Planned development timeline |
-| [FAQ.md](./FAQ.md) | Frequently asked questions |
+| [ROADMAP.md](./ROADMAP.md) | Development phases and long-term vision |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | How to contribute |
+| [SECURITY.md](./SECURITY.md) | Security policy |
+| [CHANGELOG.md](./CHANGELOG.md) | Release history |
 
 ---
 
-## 🔌 Plugin & Connector System
+## Contributing
 
-Users can add custom data sources or quant workflows by placing plugins in the `~/.qanprism/plugins/` directory.
+We welcome contributions. See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
-**Example plugin structure:**
-```json
-{
-  "name": "sec-edgar-parser",
-  "version": "1.0.0",
-  "type": "data-connector",
-  "entry": "index.js",
-  "description": "Extracts 10-K financial tables directly into Polars/Pandas"
-}
-```
-
-See [plugins/examples/](./plugins/examples/) for sample implementations.
+This project follows a [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 ---
 
-## 🤝 Contributing
+## License
 
-We welcome contributions from the open-source community! Here's how you can help:
-
-### Types of Contributions
-- **Bug Fixes**: Report issues or submit patches
-- **Feature Requests**: Propose new functionality
-- **Documentation**: Improve existing docs or write new ones
-- **Plugins**: Create data connectors or UI extensions
-- **Security**: Report vulnerabilities responsibly
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed guidelines.
-
-### Code of Conduct
-Please note that this project is released with a [Contributor Code of Conduct](./CODE_OF_CONDUCT.md). By participating in this project you agree to abide by its terms.
+MIT License. See [LICENSE](LICENSE) for details.
 
 ---
 
-## 📄 License
+## Support
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 💖 Support & Sponsorship
-
-QanPrism is an open-source project. My goal is to build even larger, more advanced AI agents and quantitative tools. If this project has helped you or your firm, please consider sponsoring my work. Your sponsorship directly funds the development of next-generation AI workflows!
-
-* **Sponsor via GitHub**: [Click here to Sponsor](#) *(Update with your GitHub Sponsors link)*
-* **Claude for OSS**: I am actively seeking support through the [Claude for Open Source](https://claude.com/contact-sales/claude-for-oss) program to integrate more powerful, advanced Claude agent capabilities into QanPrism.
-* **Enterprise Customization**: Need a custom AI agent tailored for your firm's specific workflows? Reach out below.
+QanPrism is open-source. If this project is useful to you, consider sponsoring via [GitHub Sponsors](https://github.com/sponsors/Qanexra).
 
 ---
 
-## 💎 Developed with ❤️ by **Qanexra**
+Developed by **Qanexra**
 
-*For enterprise inquiries, contact: raymond@qanexra.com*  
-*Security issues: raymond@qanexra.com*
+For inquiries: raymond@qanexra.com
