@@ -1,44 +1,156 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { RefreshCw, ArrowLeft, ArrowRight, ShieldCheck, Search } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 
 const TabPanel = ({ tab, onClose, onUpdateUrl, onUpdateTitle }) => {
   const [urlInput, setUrlInput] = useState(tab.url);
   const [history, setHistory] = useState([tab.url]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  const [srcDoc, setSrcDoc] = useState('');
+  const [fallbackSrc, setFallbackSrc] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const iframeRef = useRef(null);
 
-  // Sync urlInput when tab.url changes externally
-  useEffect(() => {
-    setUrlInput(tab.url);
-  }, [tab.url]);
-
   const isValidUrl = (str) => {
+    const trimmed = (str || '').trim();
+    if (!trimmed || trimmed.includes(' ')) return false;
+
+    // Check if it already has a protocol like http://, https://, or file://
+    if (/^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(trimmed)) {
+      try {
+        new URL(trimmed);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    // Check for localhost or IP with port
+    if (trimmed.startsWith('localhost:') || trimmed === 'localhost' || trimmed.startsWith('localhost/')) {
+      return true;
+    }
+
     try {
-      const url = new URL(str.startsWith('http') ? str : `https://${str}`);
-      // Check if it looks like a domain (has a dot and no spaces)
-      return str.includes('.') && !str.includes(' ');
+      const url = new URL(`https://${trimmed}`);
+      return url.hostname.includes('.') || url.hostname === 'localhost';
     } catch {
       return false;
     }
   };
 
-  const navigateTo = (url) => {
-    let finalUrl = url;
-    if (!isValidUrl(url)) {
-      // Treat as a search query
-      finalUrl = `https://www.google.com/search?q=${encodeURIComponent(url)}`;
-    } else if (!finalUrl.startsWith('http')) {
-      finalUrl = 'https://' + finalUrl;
+  const getFinalUrl = (url) => {
+    let finalUrl = (url || '').trim();
+    if (!finalUrl) return 'https://www.google.com';
+    
+    if (!isValidUrl(finalUrl)) {
+      return `https://www.google.com/search?q=${encodeURIComponent(finalUrl)}`;
     }
+    
+    if (!/^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(finalUrl)) {
+      if (finalUrl.startsWith('localhost') || finalUrl.startsWith('127.0.0.1')) {
+        return 'http://' + finalUrl;
+      }
+      return 'https://' + finalUrl;
+    }
+    return finalUrl;
+  };
 
-    // Trim forward history when navigating from middle of history
+  const loadUrl = useCallback(async (rawUrl) => {
+    const finalUrl = getFinalUrl(rawUrl);
+    setUrlInput(finalUrl);
+    onUpdateUrl(finalUrl);
+    setIsLoading(true);
+    setLoadError(null);
+
+    try {
+      // 1. Fetch the raw webpage HTML via Rust reqwest engine (bypasses CORS & X-Frame-Options)
+      const rawHtml = await invoke('fetch_page_context', { url: finalUrl });
+
+      if (rawHtml && typeof rawHtml === 'string' && (rawHtml.includes('<html') || rawHtml.includes('<!DOCTYPE') || rawHtml.includes('<body'))) {
+        // Extract title
+        const titleMatch = rawHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
+        if (titleMatch && titleMatch[1]) {
+          onUpdateTitle(titleMatch[1].trim());
+        }
+
+        // Script to inject for link navigation & form submission interception
+        const interceptScript = `
+          <script>
+            document.addEventListener('click', function(e) {
+              var target = e.target.closest('a');
+              if (target && target.href && !target.href.startsWith('javascript:')) {
+                e.preventDefault();
+                window.parent.postMessage({ type: 'QANPRISM_NAVIGATE', url: target.href }, '*');
+              }
+            }, true);
+            document.addEventListener('submit', function(e) {
+              var form = e.target;
+              if (form && form.action) {
+                var method = (form.method || 'GET').toUpperCase();
+                if (method === 'GET') {
+                  e.preventDefault();
+                  var formData = new FormData(form);
+                  var params = new URLSearchParams(formData);
+                  var actionUrl = form.action + (form.action.includes('?') ? '&' : '?') + params.toString();
+                  window.parent.postMessage({ type: 'QANPRISM_NAVIGATE', url: actionUrl }, '*');
+                }
+              }
+            }, true);
+          </script>
+        `;
+
+        // Base tag so relative resources (CSS, JS, images, fonts) resolve to origin domain
+        const baseTag = `<base href="${finalUrl}" target="_self">`;
+
+        let processedHtml = rawHtml;
+        if (processedHtml.includes('<head>')) {
+          processedHtml = processedHtml.replace('<head>', `<head>${baseTag}${interceptScript}`);
+        } else if (processedHtml.includes('<html')) {
+          processedHtml = processedHtml.replace(/(<html[^>]*>)/i, `$1<head>${baseTag}${interceptScript}</head>`);
+        } else {
+          processedHtml = `${baseTag}${interceptScript}` + processedHtml;
+        }
+
+        setFallbackSrc('');
+        setSrcDoc(processedHtml);
+      } else {
+        // Not HTML or empty, fallback to standard iframe
+        setSrcDoc('');
+        setFallbackSrc(finalUrl);
+      }
+    } catch (err) {
+      console.warn("fetch_page_context failed, falling back to direct iframe:", err);
+      setSrcDoc('');
+      setFallbackSrc(finalUrl);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [onUpdateUrl, onUpdateTitle]);
+
+  // Initial load or external tab URL change
+  useEffect(() => {
+    loadUrl(tab.url);
+  }, [tab.url]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Listen for iframe navigation events
+  useEffect(() => {
+    const handleMessage = (event) => {
+      if (event.data && event.data.type === 'QANPRISM_NAVIGATE' && event.data.url) {
+        navigateTo(event.data.url);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [history, historyIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const navigateTo = (url) => {
+    const finalUrl = getFinalUrl(url);
     const trimmedHistory = history.slice(0, historyIndex + 1);
     trimmedHistory.push(finalUrl);
     setHistory(trimmedHistory);
     setHistoryIndex(trimmedHistory.length - 1);
-
-    setUrlInput(finalUrl);
-    onUpdateUrl(finalUrl);
+    loadUrl(finalUrl);
   };
 
   const handleNavigate = (e) => {
@@ -51,8 +163,7 @@ const TabPanel = ({ tab, onClose, onUpdateUrl, onUpdateTitle }) => {
       const newIndex = historyIndex - 1;
       setHistoryIndex(newIndex);
       const prevUrl = history[newIndex];
-      setUrlInput(prevUrl);
-      onUpdateUrl(prevUrl);
+      loadUrl(prevUrl);
     }
   };
 
@@ -61,46 +172,20 @@ const TabPanel = ({ tab, onClose, onUpdateUrl, onUpdateTitle }) => {
       const newIndex = historyIndex + 1;
       setHistoryIndex(newIndex);
       const nextUrl = history[newIndex];
-      setUrlInput(nextUrl);
-      onUpdateUrl(nextUrl);
+      loadUrl(nextUrl);
     }
   };
 
   const reload = () => {
-    if (iframeRef.current) {
-      // Force reload by briefly setting src to empty then back
-      const currentSrc = iframeRef.current.src;
-      iframeRef.current.src = '';
-      setTimeout(() => { iframeRef.current.src = currentSrc; }, 50);
-    }
-  };
-
-  // Try to extract title from iframe on load
-  const handleIframeLoad = () => {
-    try {
-      const doc = iframeRef.current?.contentDocument || iframeRef.current?.contentWindow?.document;
-      if (doc && doc.title) {
-        onUpdateTitle(doc.title);
-      }
-    } catch {
-      // Cross-origin — extract a readable title from the URL instead
-      try {
-        const url = new URL(tab.url);
-        const host = url.hostname.replace('www.', '');
-        const path = url.pathname === '/' ? '' : url.pathname.split('/').filter(Boolean).pop() || '';
-        const title = path ? `${path} - ${host}` : host;
-        onUpdateTitle(title.charAt(0).toUpperCase() + title.slice(1));
-      } catch {
-        // fallback — keep existing title
-      }
-    }
+    const currentUrl = history[historyIndex] || tab.url;
+    loadUrl(currentUrl);
   };
 
   const canGoBack = historyIndex > 0;
   const canGoForward = historyIndex < history.length - 1;
 
   return (
-    <div className="tab-panel">
+    <div className="tab-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
       <div className="address-bar-container">
         <button
           onClick={goBack}
@@ -119,7 +204,7 @@ const TabPanel = ({ tab, onClose, onUpdateUrl, onUpdateTitle }) => {
           <ArrowRight size={16} />
         </button>
         <button onClick={reload} title="Reload">
-          <RefreshCw size={16} />
+          <RefreshCw size={16} className={isLoading ? "spinning" : ""} />
         </button>
         
         <form onSubmit={handleNavigate} style={{ display: 'flex', flex: 1, alignItems: 'center', position: 'relative' }}>
@@ -134,14 +219,24 @@ const TabPanel = ({ tab, onClose, onUpdateUrl, onUpdateTitle }) => {
         </form>
       </div>
 
-      <div className="webview-placeholder">
-        <iframe
-          ref={iframeRef}
-          src={tab.url}
-          title={tab.title}
-          sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-          onLoad={handleIframeLoad}
-        />
+      <div className="webview-placeholder" style={{ flex: 1, position: 'relative', width: '100%', height: '100%', backgroundColor: '#fff' }}>
+        {srcDoc ? (
+          <iframe
+            ref={iframeRef}
+            srcDoc={srcDoc}
+            title={tab.title || "Browser View"}
+            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
+            style={{ width: '100%', height: '100%', border: 'none' }}
+          />
+        ) : fallbackSrc ? (
+          <iframe
+            ref={iframeRef}
+            src={fallbackSrc}
+            title={tab.title || "Browser View"}
+            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
+            style={{ width: '100%', height: '100%', border: 'none' }}
+          />
+        ) : null}
       </div>
     </div>
   );

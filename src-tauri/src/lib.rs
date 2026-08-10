@@ -1,6 +1,11 @@
 #[tauri::command]
 fn fetch_page_context(url: String) -> Result<String, String> {
-    reqwest::blocking::get(&url)
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+        .build()
+        .map_err(|e| e.to_string())?;
+    client.get(&url)
+        .send()
         .map_err(|e| e.to_string())?
         .text()
         .map_err(|e| e.to_string())
