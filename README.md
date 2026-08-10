@@ -1,12 +1,35 @@
+<div align="center">
+
 # QanPrism
 
-> A low-RAM, open-source browser with a built-in local AI agent — and the foundation for a decentralized livestreaming network where every user is a node.
->
-> By **Qanexra**.
+**A low-RAM, open-source browser with a built-in local AI agent — and the foundation for a decentralized livestreaming network where every user is a node.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Self-contained](https://img.shields.io/badge/Node.js-bundled%20%C2%B7%20none%20required-brightgreen.svg)](https://nodejs.org/)
+[![Tauri](https://img.shields.io/badge/Engine-Tauri%20%2B%20Rust-orange.svg)](https://tauri.app)
 
-[English](./README.md) | [Tieng Viet](./README_VI.md)
+[![Windows](https://img.shields.io/badge/Windows-supported-blue.svg)](#supported-platforms)
+[![macOS](https://img.shields.io/badge/macOS-supported-blue.svg)](#supported-platforms)
+[![Linux](https://img.shields.io/badge/Linux-supported-blue.svg)](#supported-platforms)
+
+<br>
+
+**The decentralized livestreaming platform is coming** — no central servers, no interruptions, powered by the community.
+
+<sub>[English](./README.md) · [Tieng Viet](./README_VI.md)</sub>
+
+</div>
+
+## Contents
+
+- [What is QanPrism](#what-is-qanprism)
+- [The Bigger Picture](#the-bigger-picture)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Getting Started](#getting-started)
+- [Documentation](#documentation)
+- [License](#license)
+- [Support](#support)
 
 ---
 
@@ -30,18 +53,18 @@ Phase 1 is the browser. Phase 2 is the streaming protocol.
 
 ## Features
 
-**Browser**
+### Browser
 - Native web engine (WebView2 on Windows, WebKit on macOS/Linux)
 - Baseline memory: 30-80 MB
 - Custom frameless UI with integrated tabs
 
-**Local AI Agent**
+### Local AI Agent
 - Supports Ollama, LM Studio, and any OpenAI-compatible API
 - Auto-discovers models installed on your machine
 - Reads the active page and injects context into the LLM
 - Zero API cost when running local models
 
-**Data Extraction**
+### Data Extraction
 - Export HTML tables to CSV, JSON, or Parquet
 - SEC filing parser (10-K, 10-Q)
 - Cross-tab data comparison
@@ -50,7 +73,7 @@ Phase 1 is the browser. Phase 2 is the streaming protocol.
 
 ## Architecture
 
-```
+```text
 QanPrism UI (React + Vite)
         |
    Tauri Core (Rust)
@@ -69,12 +92,12 @@ QanPrism UI (React + Vite)
 
 ## Getting Started
 
-**Prerequisites**
+### 1. Prerequisites
 - [Node.js](https://nodejs.org/) v18 or later
 - [Rust](https://www.rust-lang.org/tools/install) stable toolchain
 - [Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/) (optional, for local AI)
 
-**Development**
+### 2. Development Setup
 
 ```bash
 git clone https://github.com/Qanexra/QANPRISM.git
@@ -83,7 +106,7 @@ npm install
 npm run tauri dev
 ```
 
-**Build for production**
+### 3. Build for Production
 
 ```bash
 npm run tauri build
@@ -112,7 +135,7 @@ This project follows a [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
@@ -122,6 +145,10 @@ QanPrism is open-source. If this project is useful to you, consider sponsoring v
 
 ---
 
-Developed by **Qanexra**
-
+<div align="center">
+  
+**Developed by Qanexra**
+  
 For inquiries: raymond@qanexra.com
+  
+</div>

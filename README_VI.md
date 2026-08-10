@@ -1,12 +1,33 @@
+<div align="center">
+
 # QanPrism
 
-> Trinh duyet nhe, ma nguon mo, tich hop AI cuc bo — va nen tang cho mang livestream phi tap trung, noi moi nguoi dung la mot node.
->
-> Boi **Qanexra**.
+**Trinh duyet nhe, ma nguon mo, tich hop AI cuc bo — va nen tang cho mang livestream phi tap trung, noi moi nguoi dung la mot node.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Self-contained](https://img.shields.io/badge/Node.js-bundled%20%C2%B7%20none%20required-brightgreen.svg)](https://nodejs.org/)
+[![Tauri](https://img.shields.io/badge/Engine-Tauri%20%2B%20Rust-orange.svg)](https://tauri.app)
 
-[English](./README.md) | [Tieng Viet](./README_VI.md)
+[![Windows](https://img.shields.io/badge/Windows-supported-blue.svg)](#supported-platforms)
+[![macOS](https://img.shields.io/badge/macOS-supported-blue.svg)](#supported-platforms)
+[![Linux](https://img.shields.io/badge/Linux-supported-blue.svg)](#supported-platforms)
+
+<br>
+
+**Nen tang livestream phi tap trung dang duoc xay dung** — khong may chu trung tam, khong bi gian doan, duoc van hanh boi cong dong.
+
+<sub>[English](./README.md) · [Tieng Viet](./README_VI.md)</sub>
+
+</div>
+
+## Noi Dung
+
+- [QanPrism la gi](#qanprism-la-gi)
+- [Tam Nhin Lon Hon](#tam-nhin-lon-hon)
+- [Tinh Nang](#tinh-nang)
+- [Bat Dau](#bat-dau)
+- [Giay Phep](#giay-phep)
+- [Ho Tro](#ho-tro)
 
 ---
 
@@ -32,18 +53,18 @@ Giai doan 1 la trinh duyet. Giai doan 2 la giao thuc phat song.
 
 ## Tinh Nang
 
-**Trinh duyet**
+### Trinh duyet
 - Web engine go cua he dieu hanh (WebView2 tren Windows, WebKit tren macOS/Linux)
 - RAM co ban: 30-80 MB
 - Giao dien tuy chinh khong vien voi tab tich hop
 
-**AI Cuc Bo**
+### AI Cuc Bo
 - Ho tro Ollama, LM Studio, va bat ky API tuong thich OpenAI
 - Tu dong phat hien cac mo hinh da cai tren may
 - Doc trang dang xem va dua ngu canh vao LLM
 - Khong ton phi API khi chay mo hinh cuc bo
 
-**Trich Xuat Du Lieu**
+### Trich Xuat Du Lieu
 - Xuat bang HTML sang CSV, JSON, hoac Parquet
 - Phan tich bao cao SEC (10-K, 10-Q)
 - So sanh du lieu xuyen tab
@@ -52,12 +73,12 @@ Giai doan 1 la trinh duyet. Giai doan 2 la giao thuc phat song.
 
 ## Bat Dau
 
-**Yeu cau**
+### 1. Yeu cau
 - [Node.js](https://nodejs.org/) v18 tro len
 - [Rust](https://www.rust-lang.org/tools/install) stable toolchain
 - [Ollama](https://ollama.com/) hoac [LM Studio](https://lmstudio.ai/) (tuy chon, cho AI cuc bo)
 
-**Phat trien**
+### 2. Phat trien
 
 ```bash
 git clone https://github.com/Qanexra/QANPRISM.git
@@ -80,6 +101,10 @@ QanPrism la ma nguon mo. Neu du an nay huu ich voi ban, hay can nhac tai tro qua
 
 ---
 
-Phat trien boi **Qanexra**
-
+<div align="center">
+  
+**Phat trien boi Qanexra**
+  
 Lien he: raymond@qanexra.com
+  
+</div>
