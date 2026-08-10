@@ -11,6 +11,9 @@ const AgentSidebar = ({ aiClient, activeTabUrl }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [apiKey, setApiKey] = useState(() => {
+    try { return localStorage.getItem('qanprism_apikey') || ''; } catch { return ''; }
+  });
   
   const [messages, setMessages] = useState([
     { role: 'agent', content: 'Agent initialized. How can I assist you today?' }
@@ -23,6 +26,8 @@ const AgentSidebar = ({ aiClient, activeTabUrl }) => {
     // Set default URLs based on selection
     if (newAgent === 'Ollama') setApiUrl('http://localhost:11434');
     else if (newAgent === 'LM Studio') setApiUrl('http://localhost:1234/v1');
+    else if (newAgent === 'DeepSeek') setApiUrl('https://api.deepseek.com/v1');
+    else if (newAgent === 'OpenAI') setApiUrl('https://api.openai.com/v1');
     else setApiUrl('');
     
     setModels([]);
@@ -107,7 +112,10 @@ const AgentSidebar = ({ aiClient, activeTabUrl }) => {
 
       const response = await fetch(completionsUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(apiKey && !isLocal ? { 'Authorization': `Bearer ${apiKey}` } : {})
+        },
         body: JSON.stringify({
           model: selectedModel || 'default',
           messages: [contextMessage, ...apiMessages]
@@ -135,7 +143,7 @@ const AgentSidebar = ({ aiClient, activeTabUrl }) => {
   return (
     <div className="agent-sidebar">
       <div className="sidebar-header">
-        <h2><Bot size={18} color="var(--accent-color)" /> Local Quant Agent</h2>
+        <h2><Bot size={18} color="var(--accent-color)" /> QanPrism Agent</h2>
         
         <div className="agent-selector">
           <Database size={12} />
@@ -179,6 +187,43 @@ const AgentSidebar = ({ aiClient, activeTabUrl }) => {
               </select>
             </div>
           )}
+        </div>
+      )}
+
+      {/* API Config Panel for Cloud Providers */}
+      {!isLocal && (
+        <div className="api-config-panel">
+          <div className="api-url-row">
+            <input 
+              type="password" 
+              value={apiKey} 
+              onChange={e => {
+                setApiKey(e.target.value);
+                try { localStorage.setItem('qanprism_apikey', e.target.value); } catch {}
+              }} 
+              placeholder={`${activeAgent} API Key`}
+              style={{ flex: 1 }}
+            />
+          </div>
+          <div className="model-selector-row">
+            <span style={{fontSize: '11px', color: 'var(--text-secondary)'}}>Model:</span>
+            <select value={selectedModel} onChange={e => setSelectedModel(e.target.value)}>
+              {activeAgent === 'DeepSeek' && (
+                <>
+                  <option value="deepseek-chat">deepseek-chat</option>
+                  <option value="deepseek-reasoner">deepseek-reasoner</option>
+                </>
+              )}
+              {activeAgent === 'OpenAI' && (
+                <>
+                  <option value="gpt-4o">gpt-4o</option>
+                  <option value="gpt-4o-mini">gpt-4o-mini</option>
+                  <option value="gpt-4.1">gpt-4.1</option>
+                </>
+              )}
+            </select>
+          </div>
+          {!apiKey && <div className="config-error">Enter your API key to use {activeAgent}</div>}
         </div>
       )}
 
