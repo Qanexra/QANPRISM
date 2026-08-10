@@ -73,24 +73,41 @@ Giai doan 1 la trinh duyet. Giai doan 2 la giao thuc phat song.
 
 ## Kien Truc
 
+Moi QanPrism vua la trinh duyet, vua la mot node trong mang.
+
 ```text
-       [ Mang P2P Phi Tap Trung ]
-       (Video Streams / WebRTC / DHT / Peers)
-                 |         |
-                 +----+----+
-                      |
-QanPrism Node (Trinh Duyet Cuc Bo)
-        |
-   Tauri Core (Rust)
-        |
-   +----+----+
-   |         |
- WebView   AI Router (Giao thuc OpenAI)
-             |
-        +----+----+
-        |         |
-   Local LLMs   Cloud APIs
-  (Ollama/LM)   (DeepSeek/OpenAI)
++----------------------------------------------------------+
+|                    QanPrism Instance                      |
+|                                                          |
+|  +-------------------+  +-----------------------------+  |
+|  |   Trinh Duyet     |  |   AI Engine                 |  |
+|  |                   |  |                             |  |
+|  |   WebView2 (Win)  |  |   Ollama / LM Studio       |  |
+|  |   WebKit (macOS)  |  |   DeepSeek / OpenAI        |  |
+|  |   WebKit (Linux)  |  |   Ngu canh trang web       |  |
+|  +-------------------+  +-----------------------------+  |
+|                                                          |
+|  +----------------------------------------------------+  |
+|  |              Tauri Core (Rust)                      |  |
+|  |              IPC / Quan ly cua so / HTTP Bridge     |  |
+|  +----------------------------------------------------+  |
+|                                                          |
+|  +----------------------------------------------------+  |
+|  |          P2P Node Engine  [Giai doan 2]             |  |
+|  |                                                     |  |
+|  |          WebRTC Relay / DHT Discovery               |  |
+|  |          Phan phoi chunk / Dinh tuyen stream        |  |
+|  +----------------------------------------------------+  |
+|                                                          |
++----------------------------------------------------------+
+        |                                    |
+        v                                    v
+   [ Cac QanPrism Node khac ]   [ Cac QanPrism Node khac ]
+        |                                    |
+        +----------------+------------------+
+                         |
+              Mang Phi Tap Trung
+              (Khong may chu trung tam)
 ```
 
 ---

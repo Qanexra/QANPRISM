@@ -73,24 +73,41 @@ Phase 1 is the browser. Phase 2 is the streaming protocol.
 
 ## Architecture
 
+Each QanPrism instance is both a browser and a network node.
+
 ```text
-       [ Decentralized P2P Mesh Network ]
-       (Video Streams / WebRTC / DHT / Peers)
-                 |         |
-                 +----+----+
-                      |
-QanPrism Node (Local Browser Instance)
-        |
-   Tauri Core (Rust)
-        |
-   +----+----+
-   |         |
- WebView   AI Router (OpenAI protocol)
-             |
-        +----+----+
-        |         |
-   Local LLMs   Cloud APIs
-  (Ollama/LM)   (DeepSeek/OpenAI)
++----------------------------------------------------------+
+|                    QanPrism Instance                      |
+|                                                          |
+|  +-------------------+  +-----------------------------+  |
+|  |   Browser Engine  |  |   AI Engine                 |  |
+|  |                   |  |                             |  |
+|  |   WebView2 (Win)  |  |   Ollama / LM Studio       |  |
+|  |   WebKit (macOS)  |  |   DeepSeek / OpenAI        |  |
+|  |   WebKit (Linux)  |  |   Page Context Injection   |  |
+|  +-------------------+  +-----------------------------+  |
+|                                                          |
+|  +----------------------------------------------------+  |
+|  |              Tauri Core (Rust)                      |  |
+|  |              IPC / Window Mgmt / HTTP Bridge        |  |
+|  +----------------------------------------------------+  |
+|                                                          |
+|  +----------------------------------------------------+  |
+|  |          P2P Node Engine  [Phase 2]                 |  |
+|  |                                                     |  |
+|  |          WebRTC Relay / DHT Discovery               |  |
+|  |          Chunk Distribution / Stream Routing        |  |
+|  +----------------------------------------------------+  |
+|                                                          |
++----------------------------------------------------------+
+        |                                    |
+        v                                    v
+   [ Other QanPrism Nodes ]     [ Other QanPrism Nodes ]
+        |                                    |
+        +----------------+------------------+
+                         |
+              Decentralized Mesh Network
+              (No central server)
 ```
 
 ---
