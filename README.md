@@ -35,7 +35,7 @@ Mục tiêu dài hạn là xây dựng một **mạng livestream phi tập trung
 
 Khi bạn livestream trên mạng phi tập trung, không ai có thể tắt bạn. Không có nút "report" nào có thể làm sập luồng phát sóng của bạn. Nội dung của bạn được phân phối qua hàng ngàn node — và mỗi người dùng QanPrism là một node.
 
-**Giai đoạn 1 là trình duyệt. Giai đoạn 2 là giao thức phát sóng.**
+**Giai đoạn 1 là trình duyệt. Giai đoạn 2 là giao thức phát sóng (livestream platform).**
 
 ## Của Cộng Đồng, Do Cộng Đồng, Vì Cộng Đồng
 
