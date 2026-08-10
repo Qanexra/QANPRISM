@@ -41,6 +41,18 @@ Khi bạn livestream trên mạng phi tập trung, không ai có thể tắt b�
 
 ---
 
+## Của Cộng Đồng, Do Cộng Đồng, Vì Cộng Đồng
+
+QanPrism là mã nguồn mở 100%. Không có công ty nào đứng sau kiểm soát mạng lưới. Không có máy chủ trung tâm nào có quyền quyết định ai được phát sóng và ai không. Cộng đồng sở hữu hạ tầng, cộng đồng vận hành các node, và cộng đồng quyết định hướng phát triển.
+
+Mỗi người chạy QanPrism đều đóng góp vào sức mạnh của mạng lưới. Bạn không phải là người dùng — bạn là một phần của hạ tầng. Đó là bản chất của phi tập trung.
+
+Tất cả mã nguồn đều công khai, có thể kiểm tra, và mọi người đều có quyền đóng góp thông qua pull request và thảo luận trên GitHub.
+
+> **Tuyên bố quan trọng:** Dự án này là một sản phẩm công nghệ mã nguồn mở, được xây dựng nhằm mục đích phát triển hạ tầng internet phi tập trung. **Đây không phải là công cụ phục vụ mục đích phản động hay chống phá chính quyền.** Chúng tôi không ủng hộ, khuyến khích, hoặc hỗ trợ bất kỳ hoạt động nào vi phạm pháp luật. QanPrism được tạo ra để giải quyết một vấn đề kỹ thuật thực tế: khi các nền tảng tập trung có quyền ngắt bất kỳ luồng phát sóng nào vào bất kỳ lúc nào, người dùng cần có một giải pháp thay thế mà không ai có thể kiểm soát đơn phương. Đây là về quyền sở hữu hạ tầng của cộng đồng, không phải chính trị.
+
+---
+
 ## Tính Năng
 
 **Trình duyệt**

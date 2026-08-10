@@ -37,6 +37,16 @@ Khi bạn livestream trên mạng phi tập trung, không ai có thể tắt b�
 
 **Giai đoạn 1 là trình duyệt. Giai đoạn 2 là giao thức phát sóng.**
 
+## Của Cộng Đồng, Do Cộng Đồng, Vì Cộng Đồng
+
+QanPrism là mã nguồn mở 100%. Không có công ty nào đứng sau kiểm soát mạng lưới. Không có máy chủ trung tâm nào có quyền quyết định ai được phát sóng và ai không. Cộng đồng sở hữu hạ tầng, cộng đồng vận hành các node, và cộng đồng quyết định hướng phát triển.
+
+Mỗi người chạy QanPrism đều đóng góp vào sức mạnh của mạng lưới. Bạn không phải là người dùng — bạn là một phần của hạ tầng. Đó là bản chất của phi tập trung.
+
+Tất cả mã nguồn đều công khai, có thể kiểm tra, và mọi người đều có quyền đóng góp thông qua pull request và thảo luận trên GitHub.
+
+> **Tuyên bố quan trọng:** Dự án này là một sản phẩm công nghệ mã nguồn mở, được xây dựng nhằm mục đích phát triển hạ tầng internet phi tập trung. **Đây không phải là công cụ phục vụ mục đích phản động hay chống phá chính quyền.** Chúng tôi không ủng hộ, khuyến khích, hoặc hỗ trợ bất kỳ hoạt động nào vi phạm pháp luật. QanPrism được tạo ra để giải quyết một vấn đề kỹ thuật thực tế: khi các nền tảng tập trung có quyền ngắt bất kỳ luồng phát sóng nào vào bất kỳ lúc nào, người dùng cần có một giải pháp thay thế mà không ai có thể kiểm soát đơn phương. Đây là về quyền sở hữu hạ tầng của cộng đồng, không phải chính trị.
+
 ## Tính Năng
 
 **Trình duyệt**
@@ -139,6 +149,16 @@ The long-term vision is to build a **decentralized livestreaming network** on to
 This idea came from watching what happened during Mrs. Hang's livestream sessions in Vietnam — platforms like Facebook, TikTok, and YouTube repeatedly interrupted and blocked her streams because they had the power to do so. A truly decentralized network removes that single point of failure entirely.
 
 **Phase 1 is the browser. Phase 2 is the streaming protocol.**
+
+## By the Community, For the Community
+
+QanPrism is 100% open-source. There is no company behind the network pulling strings. There is no central server that decides who gets to stream and who does not. The community owns the infrastructure, the community operates the nodes, and the community decides the direction of development.
+
+Every person running QanPrism contributes to the strength of the network. You are not a user — you are part of the infrastructure. That is the nature of decentralization.
+
+All source code is public, auditable, and everyone is welcome to contribute through pull requests and GitHub discussions.
+
+> **Important disclaimer:** This project is an open-source technology product, built for the purpose of developing decentralized internet infrastructure. **It is not a tool for political subversion or opposition to any government.** We do not support, encourage, or facilitate any illegal activity. QanPrism was created to solve a real technical problem: when centralized platforms have the power to shut down any stream at any time, users need an alternative that no single entity can control. This is about community ownership of infrastructure, not politics.
 
 ## Features
 
