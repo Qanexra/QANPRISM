@@ -31,7 +31,7 @@ function App() {
 
     if (!restored) {
       const initialTab = {
-        id: 'tab-' + Date.now(),
+        id: 'tab-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
         url: 'https://www.google.com',
         title: 'New Tab',
         memory_mb: 45,
@@ -50,14 +50,22 @@ function App() {
     }
   }, [tabs, currentTabId]);
 
-  const handleUrlChange = (url) => {
-    if (!currentTabId) return;
-    setTabs(prev => prev.map(t => t.id === currentTabId ? { ...t, url } : t));
+  const handleUrlChange = (tabId, url) => {
+    setTabs(prev => prev.map(t => {
+      if (t.id === tabId && t.url !== url) {
+        return { ...t, url };
+      }
+      return t;
+    }));
   };
 
-  const handleTitleChange = (title) => {
-    if (!currentTabId) return;
-    setTabs(prev => prev.map(t => t.id === currentTabId ? { ...t, title } : t));
+  const handleTitleChange = (tabId, title) => {
+    setTabs(prev => prev.map(t => {
+      if (t.id === tabId && t.title !== title) {
+        return { ...t, title };
+      }
+      return t;
+    }));
   };
 
   const closeTab = (tabId) => {
@@ -67,15 +75,14 @@ function App() {
       setCurrentTabId(newTabs[newTabs.length - 1]?.id || null);
     }
     if (newTabs.length === 0) {
-      // If all tabs closed, open a fresh one
       addNewTab();
     }
   };
 
-  const addNewTab = () => {
+  const addNewTab = (initialUrl = 'https://www.google.com') => {
     const newTab = {
-      id: 'tab-' + Date.now(),
-      url: 'https://www.google.com',
+      id: 'tab-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      url: initialUrl,
       title: 'New Tab',
       memory_mb: 30,
       suspended: false,
@@ -86,6 +93,7 @@ function App() {
   };
 
   const appWindow = getCurrentWindow();
+  const activeTab = tabs.find(t => t.id === currentTabId);
 
   return (
     <div className="app-container">
@@ -109,7 +117,7 @@ function App() {
           ))}
           <button 
             className="new-tab-btn"
-            onClick={addNewTab} 
+            onClick={() => addNewTab()} 
             title="New Tab"
           >
             <Plus size={16} />
@@ -124,25 +132,34 @@ function App() {
       </nav>
 
       <div className="main-workspace">
-        {/* Main browser area */}
-        <div className="browser-content">
+        {/* Main browser area with preserved tabs (no unmount flash or re-fetching) */}
+        <div className="browser-content" style={{ flex: 1, position: 'relative', height: '100%', overflow: 'hidden' }}>
           {tabs.map(tab => (
-            tab.id === currentTabId && (
+            <div 
+              key={tab.id}
+              style={{ 
+                display: tab.id === currentTabId ? 'flex' : 'none', 
+                width: '100%', 
+                height: '100%', 
+                flexDirection: 'column' 
+              }}
+            >
               <TabPanel
-                key={tab.id}
                 tab={tab}
+                isActive={tab.id === currentTabId}
                 onClose={() => closeTab(tab.id)}
-                onUpdateUrl={handleUrlChange}
-                onUpdateTitle={handleTitleChange}
+                onUpdateUrl={(url) => handleUrlChange(tab.id, url)}
+                onUpdateTitle={(title) => handleTitleChange(tab.id, title)}
               />
-            )
+            </div>
           ))}
         </div>
 
         {/* Right sidebar with AI agent */}
         <AgentSidebar 
           aiClient={aiClient} 
-          activeTabUrl={tabs.find(t => t.id === currentTabId)?.url || 'https://www.google.com'} 
+          activeTabUrl={activeTab?.url || 'https://www.google.com'} 
+          onOpenNewTab={addNewTab}
         />
 
         {/* Memory monitor inside workspace overlay */}

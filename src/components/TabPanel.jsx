@@ -1,22 +1,24 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { RefreshCw, ArrowLeft, ArrowRight, ShieldCheck, Search } from 'lucide-react';
+import { RefreshCw, ArrowLeft, ArrowRight, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { INJECTED_AGENT_BRIDGE_SCRIPT } from '../utils/visionEngine';
 
-const TabPanel = ({ tab, onClose, onUpdateUrl, onUpdateTitle }) => {
+const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
   const [urlInput, setUrlInput] = useState(tab.url);
   const [history, setHistory] = useState([tab.url]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [srcDoc, setSrcDoc] = useState('');
   const [fallbackSrc, setFallbackSrc] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [loadError, setLoadError] = useState(null);
+  const [showVisionOverlay, setShowVisionOverlay] = useState(false);
+  
   const iframeRef = useRef(null);
+  const lastLoadedUrlRef = useRef('');
 
   const isValidUrl = (str) => {
     const trimmed = (str || '').trim();
     if (!trimmed || trimmed.includes(' ')) return false;
 
-    // Check if it already has a protocol like http://, https://, or file://
     if (/^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(trimmed)) {
       try {
         new URL(trimmed);
@@ -26,7 +28,6 @@ const TabPanel = ({ tab, onClose, onUpdateUrl, onUpdateTitle }) => {
       }
     }
 
-    // Check for localhost or IP with port
     if (trimmed.startsWith('localhost:') || trimmed === 'localhost' || trimmed.startsWith('localhost/')) {
       return true;
     }
@@ -58,45 +59,33 @@ const TabPanel = ({ tab, onClose, onUpdateUrl, onUpdateTitle }) => {
 
   const loadUrl = useCallback(async (rawUrl) => {
     const finalUrl = getFinalUrl(rawUrl);
+    if (finalUrl === lastLoadedUrlRef.current) return;
+    lastLoadedUrlRef.current = finalUrl;
+
     setUrlInput(finalUrl);
-    onUpdateUrl(finalUrl);
+    if (finalUrl !== tab.url) {
+      onUpdateUrl(finalUrl);
+    }
     setIsLoading(true);
-    setLoadError(null);
 
     try {
-      // 1. Fetch the raw webpage HTML via Rust reqwest engine (bypasses CORS & X-Frame-Options)
+      // Fetch the raw webpage HTML via Rust reqwest engine (bypasses CORS & X-Frame-Options)
       const rawHtml = await invoke('fetch_page_context', { url: finalUrl });
 
       if (rawHtml && typeof rawHtml === 'string' && (rawHtml.includes('<html') || rawHtml.includes('<!DOCTYPE') || rawHtml.includes('<body'))) {
         // Extract title
         const titleMatch = rawHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
         if (titleMatch && titleMatch[1]) {
-          onUpdateTitle(titleMatch[1].trim());
+          const newTitle = titleMatch[1].trim();
+          if (newTitle !== tab.title) {
+            onUpdateTitle(newTitle);
+          }
         }
 
-        // Script to inject for link navigation & form submission interception
-        const interceptScript = `
+        // Script to inject for link navigation, form interception, and AI Agent control bridge
+        const scriptPayload = `
           <script>
-            document.addEventListener('click', function(e) {
-              var target = e.target.closest('a');
-              if (target && target.href && !target.href.startsWith('javascript:')) {
-                e.preventDefault();
-                window.parent.postMessage({ type: 'QANPRISM_NAVIGATE', url: target.href }, '*');
-              }
-            }, true);
-            document.addEventListener('submit', function(e) {
-              var form = e.target;
-              if (form && form.action) {
-                var method = (form.method || 'GET').toUpperCase();
-                if (method === 'GET') {
-                  e.preventDefault();
-                  var formData = new FormData(form);
-                  var params = new URLSearchParams(formData);
-                  var actionUrl = form.action + (form.action.includes('?') ? '&' : '?') + params.toString();
-                  window.parent.postMessage({ type: 'QANPRISM_NAVIGATE', url: actionUrl }, '*');
-                }
-              }
-            }, true);
+            ${INJECTED_AGENT_BRIDGE_SCRIPT}
           </script>
         `;
 
@@ -105,17 +94,16 @@ const TabPanel = ({ tab, onClose, onUpdateUrl, onUpdateTitle }) => {
 
         let processedHtml = rawHtml;
         if (processedHtml.includes('<head>')) {
-          processedHtml = processedHtml.replace('<head>', `<head>${baseTag}${interceptScript}`);
+          processedHtml = processedHtml.replace('<head>', `<head>${baseTag}${scriptPayload}`);
         } else if (processedHtml.includes('<html')) {
-          processedHtml = processedHtml.replace(/(<html[^>]*>)/i, `$1<head>${baseTag}${interceptScript}</head>`);
+          processedHtml = processedHtml.replace(/(<html[^>]*>)/i, `$1<head>${baseTag}${scriptPayload}</head>`);
         } else {
-          processedHtml = `${baseTag}${interceptScript}` + processedHtml;
+          processedHtml = `${baseTag}${scriptPayload}` + processedHtml;
         }
 
         setFallbackSrc('');
         setSrcDoc(processedHtml);
       } else {
-        // Not HTML or empty, fallback to standard iframe
         setSrcDoc('');
         setFallbackSrc(finalUrl);
       }
@@ -126,23 +114,60 @@ const TabPanel = ({ tab, onClose, onUpdateUrl, onUpdateTitle }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [onUpdateUrl, onUpdateTitle]);
+  }, [tab.url, tab.title, onUpdateUrl, onUpdateTitle]);
 
-  // Initial load or external tab URL change
   useEffect(() => {
-    loadUrl(tab.url);
-  }, [tab.url]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (tab.url && tab.url !== lastLoadedUrlRef.current) {
+      loadUrl(tab.url);
+    }
+  }, [tab.url, loadUrl]);
 
-  // Listen for iframe navigation events
+  // Handle messages from the iframe and commands from the Agent (scoped to active tab)
   useEffect(() => {
     const handleMessage = (event) => {
-      if (event.data && event.data.type === 'QANPRISM_NAVIGATE' && event.data.url) {
+      if (!event.data) return;
+
+      if (event.data.type === 'QANPRISM_NAVIGATE' && event.data.url) {
         navigateTo(event.data.url);
+      } else if (event.data.type === 'QP_BRIDGE_READY' && isActive) {
+        window.dispatchEvent(new CustomEvent('QP_ACTIVE_TAB_BRIDGE_READY', { detail: { tabId: tab.id } }));
+      } else if ((event.data.type === 'QP_AGENT_STATE_RESPONSE' || event.data.type === 'QP_AGENT_ACTION_RESULT') && isActive) {
+        window.dispatchEvent(new CustomEvent(event.data.type, { detail: event.data }));
       }
     };
+
+    // Agent -> Tab Panel command listener (only active tab responds)
+    const handleAgentCommand = (e) => {
+      if (!isActive || !iframeRef.current || !iframeRef.current.contentWindow) return;
+      const { action, actionId, requestId, type } = e.detail || {};
+
+      if (type === 'QP_AGENT_EXECUTE_ACTION') {
+        iframeRef.current.contentWindow.postMessage({
+          type: 'QP_AGENT_EXECUTE_ACTION',
+          action,
+          actionId
+        }, '*');
+      } else if (type === 'QP_AGENT_GET_STATE') {
+        iframeRef.current.contentWindow.postMessage({
+          type: 'QP_AGENT_GET_STATE',
+          requestId
+        }, '*');
+      } else if (type === 'QP_AGENT_TOGGLE_BADGES') {
+        iframeRef.current.contentWindow.postMessage({
+          type: 'QP_AGENT_TOGGLE_BADGES',
+          show: e.detail.show
+        }, '*');
+      }
+    };
+
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [history, historyIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+    window.addEventListener('QP_DISPATCH_TO_TAB', handleAgentCommand);
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      window.removeEventListener('QP_DISPATCH_TO_TAB', handleAgentCommand);
+    };
+  }, [tab.id, isActive, history, historyIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const navigateTo = (url) => {
     const finalUrl = getFinalUrl(url);
@@ -178,7 +203,19 @@ const TabPanel = ({ tab, onClose, onUpdateUrl, onUpdateTitle }) => {
 
   const reload = () => {
     const currentUrl = history[historyIndex] || tab.url;
+    lastLoadedUrlRef.current = ''; // force reload
     loadUrl(currentUrl);
+  };
+
+  const toggleVisionMarks = () => {
+    const nextState = !showVisionOverlay;
+    setShowVisionOverlay(nextState);
+    if (iframeRef.current && iframeRef.current.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({
+        type: 'QP_AGENT_TOGGLE_BADGES',
+        show: nextState
+      }, '*');
+    }
   };
 
   const canGoBack = historyIndex > 0;
@@ -213,10 +250,22 @@ const TabPanel = ({ tab, onClose, onUpdateUrl, onUpdateTitle }) => {
             type="text" 
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
-            style={{ paddingLeft: 36 }}
+            style={{ paddingLeft: 36, paddingRight: 36 }}
             placeholder="Search or enter web address"
           />
         </form>
+
+        {/* Vision Marks Toggle Button */}
+        <button 
+          onClick={toggleVisionMarks}
+          style={{ 
+            color: showVisionOverlay ? 'var(--accent-color, #3b82f6)' : 'var(--text-secondary, #94a3b8)',
+            marginLeft: '4px'
+          }}
+          title={showVisionOverlay ? "Hide AI Vision Markers" : "Show AI Vision Markers (#IDs)"}
+        >
+          {showVisionOverlay ? <Eye size={16} /> : <EyeOff size={16} />}
+        </button>
       </div>
 
       <div className="webview-placeholder" style={{ flex: 1, position: 'relative', width: '100%', height: '100%', backgroundColor: '#fff' }}>
