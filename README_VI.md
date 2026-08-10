@@ -2,124 +2,114 @@
 
 # QanPrism
 
-**Trinh duyet nhe, ma nguon mo, tich hop AI cuc bo — va nen tang cho mang livestream phi tap trung, noi moi nguoi dung la mot node.**
+**Trình duyệt nhẹ, mã nguồn mở, tích hợp AI cục bộ — và nền tảng cho mạng livestream phi tập trung, nơi mỗi người dùng là một node.**
+
+**Phát triển bởi Qanexra — đội ngũ phát triển từ Việt Nam**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Self-contained](https://img.shields.io/badge/Node.js-bundled%20%C2%B7%20none%20required-brightgreen.svg)](https://nodejs.org/)
 [![Tauri](https://img.shields.io/badge/Engine-Tauri%20%2B%20Rust-orange.svg)](https://tauri.app)
 
-[![Windows](https://img.shields.io/badge/Windows-supported-blue.svg)](#supported-platforms)
-[![macOS](https://img.shields.io/badge/macOS-supported-blue.svg)](#supported-platforms)
-[![Linux](https://img.shields.io/badge/Linux-supported-blue.svg)](#supported-platforms)
+[![Windows](https://img.shields.io/badge/Windows-supported-blue.svg)](#)
+[![macOS](https://img.shields.io/badge/macOS-supported-blue.svg)](#)
+[![Linux](https://img.shields.io/badge/Linux-supported-blue.svg)](#)
 
 <br>
 
-**Nen tang livestream phi tap trung dang duoc xay dung** — khong may chu trung tam, khong bi gian doan, duoc van hanh boi cong dong.
-
-<sub>[English](./README.md) · [Tieng Viet](./README_VI.md)</sub>
+[Tiếng Việt](./README_VI.md) · [English](./README.md)
 
 </div>
 
-## Noi Dung
+---
 
-- [QanPrism la gi](#qanprism-la-gi)
-- [Tam Nhin Lon Hon](#tam-nhin-lon-hon)
-- [Tinh Nang](#tinh-nang)
-- [Bat Dau](#bat-dau)
-- [Giay Phep](#giay-phep)
-- [Ho Tro](#ho-tro)
+## QanPrism là gì
+
+QanPrism là một trình duyệt web nhẹ, mã nguồn mở, được xây dựng trên Tauri và Rust. Thay vì đóng gói web engine riêng như Chrome, nó sử dụng web engine có sẵn của hệ điều hành — giảm mức sử dụng RAM xuống khoảng 30-80 MB, ít hơn khoảng 90% so với Chrome.
+
+Trình duyệt đi kèm một thanh AI tích hợp có thể kết nối với các mô hình AI chạy cục bộ trên máy của bạn (Ollama, LM Studio) hoặc API đám mây (DeepSeek, OpenAI). AI có thể đọc trang web bạn đang xem, trả lời câu hỏi, trích xuất dữ liệu từ bảng, hoặc hỗ trợ nghiên cứu.
+
+Nhưng QanPrism không chỉ là một trình duyệt.
+
+## Tầm Nhìn Lớn Hơn
+
+Mục tiêu dài hạn là xây dựng một **mạng livestream phi tập trung** trên nền tảng trình duyệt này. Mỗi người chạy QanPrism cũng đồng thời đóng góp như một relay node trong mạng P2P. Không có công ty nào kiểm soát hạ tầng. Không ai có thể tắt một buổi livestream vì không có máy chủ trung tâm nào để đóng.
+
+Ý tưởng này đến từ việc theo dõi những gì đã xảy ra trong các buổi livestream của bà Nguyễn Phương Hằng tại Việt Nam — các nền tảng như Facebook, TikTok, và YouTube liên tục ngắt và chặn luồng phát sóng của bà vì họ có quyền làm điều đó. Một mạng phi tập trung thực sự loại bỏ hoàn toàn điểm yếu duy nhất đó.
+
+Khi bạn livestream trên mạng phi tập trung, không ai có thể tắt bạn. Không có nút "report" nào có thể làm sập luồng phát sóng của bạn. Nội dung của bạn được phân phối qua hàng ngàn node — và mỗi người dùng QanPrism là một node.
+
+**Giai đoạn 1 là trình duyệt. Giai đoạn 2 là giao thức phát sóng.**
 
 ---
 
-## QanPrism la gi
+## Tính Năng
 
-QanPrism la mot trinh duyet web nhe duoc xay dung tren Tauri va Rust. No su dung web engine co san cua he dieu hanh thay vi dong goi rieng, giam muc su dung RAM xuong khoang 30-80 MB — it hon khoang 90% so voi Chrome.
+**Trình duyệt**
+- Web engine gốc của hệ điều hành (WebView2 trên Windows, WebKit trên macOS/Linux)
+- RAM cơ bản: 30-80 MB
+- Giao diện tuỳ chỉnh không viền với tab tích hợp
 
-Trinh duyet di kem mot thanh AI tich hop co the ket noi voi cac mo hinh AI chay tren may cua ban (Ollama, LM Studio) hoac API dam may (DeepSeek, OpenAI). AI co the doc trang web ban dang xem va tra loi cau hoi, trich xuat du lieu tu bang, hoac ho tro nghien cuu.
+**AI Cục Bộ**
+- Hỗ trợ Ollama, LM Studio, và bất kỳ API tương thích OpenAI
+- Tự động phát hiện các mô hình đã cài trên máy
+- Đọc trang đang xem và đưa ngữ cảnh vào LLM
+- Không tốn phí API khi chạy mô hình cục bộ
 
-Nhung QanPrism khong chi la mot trinh duyet.
-
-## Tam Nhin Lon Hon
-
-Muc tieu dai han la xay dung mot **mang livestream phi tap trung** tren nen tang trinh duyet nay. Moi nguoi chay QanPrism cung dong thoi dong gop nhu mot relay node trong mang P2P. Khong co cong ty nao kiem soat ha tang. Khong ai co the tat mot buoi livestream vi khong co may chu trung tam nao de dong.
-
-Y tuong nay den tu viec theo doi nhung gi da xay ra trong cac buoi livestream cua ba Nguyen Phuong Hang tai Viet Nam — cac nen tang nhu Facebook, TikTok, va YouTube lien tuc ngat va chan luong phat song cua ba vi ho co quyen lam dieu do. Mot mang phi tap trung thuc su loai bo hoan toan diem yeu duy nhat do.
-
-Khi ban livestream tren mang phi tap trung, khong ai co the tat ban. Khong co nut "report" nao co the lam sap luong phat song cua ban. Noi dung cua ban duoc phan phoi qua hang ngan node — va moi nguoi dung QanPrism la mot node.
-
-Giai doan 1 la trinh duyet. Giai doan 2 la giao thuc phat song.
-
----
-
-## Tinh Nang
-
-### Trinh duyet
-- Web engine go cua he dieu hanh (WebView2 tren Windows, WebKit tren macOS/Linux)
-- RAM co ban: 30-80 MB
-- Giao dien tuy chinh khong vien voi tab tich hop
-
-### AI Cuc Bo
-- Ho tro Ollama, LM Studio, va bat ky API tuong thich OpenAI
-- Tu dong phat hien cac mo hinh da cai tren may
-- Doc trang dang xem va dua ngu canh vao LLM
-- Khong ton phi API khi chay mo hinh cuc bo
-
-### Trich Xuat Du Lieu
-- Xuat bang HTML sang CSV, JSON, hoac Parquet
-- Phan tich bao cao SEC (10-K, 10-Q)
-- So sanh du lieu xuyen tab
+**Trích Xuất Dữ Liệu**
+- Xuất bảng HTML sang CSV, JSON, hoặc Parquet
+- Phân tích báo cáo SEC (10-K, 10-Q)
+- So sánh dữ liệu xuyên tab
 
 ---
 
-## Kien Truc
+## Kiến Trúc
 
-Moi QanPrism vua la trinh duyet, vua la mot node trong mang.
+Mỗi QanPrism vừa là trình duyệt, vừa là một node trong mạng.
 
 ```text
 +----------------------------------------------------------+
 |                    QanPrism Instance                      |
 |                                                          |
 |  +-------------------+  +-----------------------------+  |
-|  |   Trinh Duyet     |  |   AI Engine                 |  |
+|  |   Trình Duyệt    |  |   AI Engine                 |  |
 |  |                   |  |                             |  |
 |  |   WebView2 (Win)  |  |   Ollama / LM Studio       |  |
 |  |   WebKit (macOS)  |  |   DeepSeek / OpenAI        |  |
-|  |   WebKit (Linux)  |  |   Ngu canh trang web       |  |
+|  |   WebKit (Linux)  |  |   Ngữ cảnh trang web       |  |
 |  +-------------------+  +-----------------------------+  |
 |                                                          |
 |  +----------------------------------------------------+  |
 |  |              Tauri Core (Rust)                      |  |
-|  |              IPC / Quan ly cua so / HTTP Bridge     |  |
+|  |              IPC / Quản lý cửa sổ / HTTP Bridge    |  |
 |  +----------------------------------------------------+  |
 |                                                          |
 |  +----------------------------------------------------+  |
-|  |          P2P Node Engine  [Giai doan 2]             |  |
+|  |          P2P Node Engine  [Giai đoạn 2]             |  |
 |  |                                                     |  |
 |  |          WebRTC Relay / DHT Discovery               |  |
-|  |          Phan phoi chunk / Dinh tuyen stream        |  |
+|  |          Phân phối chunk / Định tuyến stream        |  |
 |  +----------------------------------------------------+  |
 |                                                          |
 +----------------------------------------------------------+
         |                                    |
         v                                    v
-   [ Cac QanPrism Node khac ]   [ Cac QanPrism Node khac ]
+   [ Các QanPrism Node khác ]   [ Các QanPrism Node khác ]
         |                                    |
         +----------------+------------------+
                          |
-              Mang Phi Tap Trung
-              (Khong may chu trung tam)
+              Mạng Phi Tập Trung
+              (Không máy chủ trung tâm)
 ```
 
 ---
 
-## Bat Dau
+## Bắt Đầu
 
-### 1. Yeu cau
-- [Node.js](https://nodejs.org/) v18 tro len
+**Yêu cầu**
+- [Node.js](https://nodejs.org/) v18 trở lên
 - [Rust](https://www.rust-lang.org/tools/install) stable toolchain
-- [Ollama](https://ollama.com/) hoac [LM Studio](https://lmstudio.ai/) (tuy chon, cho AI cuc bo)
+- [Ollama](https://ollama.com/) hoặc [LM Studio](https://lmstudio.ai/) (tuỳ chọn, cho AI cục bộ)
 
-### 2. Phat trien
+**Phát triển**
 
 ```bash
 git clone https://github.com/Qanexra/QANPRISM.git
@@ -130,22 +120,22 @@ npm run tauri dev
 
 ---
 
-## Giay Phep
+## Giấy Phép
 
-MIT License. Xem [LICENSE](LICENSE) de biet chi tiet.
+MIT License. Xem [LICENSE](LICENSE) để biết chi tiết.
 
 ---
 
-## Ho Tro
+## Hỗ Trợ
 
-QanPrism la ma nguon mo. Neu du an nay huu ich voi ban, hay can nhac tai tro qua [GitHub Sponsors](https://github.com/sponsors/Qanexra).
+QanPrism là mã nguồn mở. Nếu dự án này hữu ích với bạn, hãy cân nhắc tài trợ qua [GitHub Sponsors](https://github.com/sponsors/Qanexra).
 
 ---
 
 <div align="center">
-  
-**Phat trien boi Qanexra**
-  
-Lien he: raymond@qanexra.com
-  
+
+**Phát triển bởi Qanexra từ Việt Nam**
+
+raymond@qanexra.com
+
 </div>

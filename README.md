@@ -2,40 +2,131 @@
 
 # QanPrism
 
-**A low-RAM, open-source browser with a built-in local AI agent — and the foundation for a decentralized livestreaming network where every user is a node.**
+**Phát triển bởi Qanexra — đội ngũ phát triển từ Việt Nam**
+
+Hỗ trợ Tiếng Việt và English / Supports Vietnamese and English
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Self-contained](https://img.shields.io/badge/Node.js-bundled%20%C2%B7%20none%20required-brightgreen.svg)](https://nodejs.org/)
 [![Tauri](https://img.shields.io/badge/Engine-Tauri%20%2B%20Rust-orange.svg)](https://tauri.app)
 
-[![Windows](https://img.shields.io/badge/Windows-supported-blue.svg)](#supported-platforms)
-[![macOS](https://img.shields.io/badge/macOS-supported-blue.svg)](#supported-platforms)
-[![Linux](https://img.shields.io/badge/Linux-supported-blue.svg)](#supported-platforms)
-
-<br>
-
-**The decentralized livestreaming platform is coming** — no central servers, no interruptions, powered by the community.
-
-<sub>[English](./README.md) · [Tieng Viet](./README_VI.md)</sub>
+[![Windows](https://img.shields.io/badge/Windows-supported-blue.svg)](#)
+[![macOS](https://img.shields.io/badge/macOS-supported-blue.svg)](#)
+[![Linux](https://img.shields.io/badge/Linux-supported-blue.svg)](#)
 
 </div>
 
-## Contents
+---
 
-- [What is QanPrism](#what-is-qanprism)
-- [The Bigger Picture](#the-bigger-picture)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Getting Started](#getting-started)
-- [Documentation](#documentation)
-- [License](#license)
-- [Support](#support)
+# Tiếng Việt
+
+## QanPrism là gì
+
+QanPrism là một trình duyệt web nhẹ, mã nguồn mở, được xây dựng trên Tauri và Rust. Thay vì đóng gói web engine riêng như Chrome, nó sử dụng web engine có sẵn của hệ điều hành — giảm mức sử dụng RAM xuống khoảng 30-80 MB, ít hơn khoảng 90% so với Chrome.
+
+Trình duyệt đi kèm một thanh AI tích hợp có thể kết nối với các mô hình AI chạy cục bộ trên máy của bạn (Ollama, LM Studio) hoặc API đám mây (DeepSeek, OpenAI). AI có thể đọc trang web bạn đang xem, trả lời câu hỏi, trích xuất dữ liệu từ bảng, hoặc hỗ trợ nghiên cứu.
+
+Nhưng QanPrism không chỉ là một trình duyệt.
+
+## Tầm Nhìn Lớn Hơn
+
+Mục tiêu dài hạn là xây dựng một **mạng livestream phi tập trung** trên nền tảng trình duyệt này. Mỗi người chạy QanPrism cũng đồng thời đóng góp như một relay node trong mạng P2P. Không có công ty nào kiểm soát hạ tầng. Không ai có thể tắt một buổi livestream vì không có máy chủ trung tâm nào để đóng.
+
+Ý tưởng này đến từ việc theo dõi những gì đã xảy ra trong các buổi livestream của bà Nguyễn Phương Hằng tại Việt Nam — các nền tảng như Facebook, TikTok, và YouTube liên tục ngắt và chặn luồng phát sóng của bà vì họ có quyền làm điều đó. Một mạng phi tập trung thực sự loại bỏ hoàn toàn điểm yếu duy nhất đó.
+
+Khi bạn livestream trên mạng phi tập trung, không ai có thể tắt bạn. Không có nút "report" nào có thể làm sập luồng phát sóng của bạn. Nội dung của bạn được phân phối qua hàng ngàn node — và mỗi người dùng QanPrism là một node.
+
+**Giai đoạn 1 là trình duyệt. Giai đoạn 2 là giao thức phát sóng.**
+
+## Tính Năng
+
+**Trình duyệt**
+- Web engine gốc của hệ điều hành (WebView2 trên Windows, WebKit trên macOS/Linux)
+- RAM cơ bản: 30-80 MB
+- Giao diện tuỳ chỉnh không viền với tab tích hợp
+
+**AI Cục Bộ**
+- Hỗ trợ Ollama, LM Studio, và bất kỳ API tương thích OpenAI
+- Tự động phát hiện các mô hình đã cài trên máy
+- Đọc trang đang xem và đưa ngữ cảnh vào LLM
+- Không tốn phí API khi chạy mô hình cục bộ
+
+**Trích Xuất Dữ Liệu**
+- Xuất bảng HTML sang CSV, JSON, hoặc Parquet
+- Phân tích báo cáo SEC (10-K, 10-Q)
+- So sánh dữ liệu xuyên tab
+
+## Kiến Trúc
+
+Mỗi QanPrism vừa là trình duyệt, vừa là một node trong mạng.
+
+```text
++----------------------------------------------------------+
+|                    QanPrism Instance                      |
+|                                                          |
+|  +-------------------+  +-----------------------------+  |
+|  |   Trình Duyệt    |  |   AI Engine                 |  |
+|  |                   |  |                             |  |
+|  |   WebView2 (Win)  |  |   Ollama / LM Studio       |  |
+|  |   WebKit (macOS)  |  |   DeepSeek / OpenAI        |  |
+|  |   WebKit (Linux)  |  |   Ngữ cảnh trang web       |  |
+|  +-------------------+  +-----------------------------+  |
+|                                                          |
+|  +----------------------------------------------------+  |
+|  |              Tauri Core (Rust)                      |  |
+|  |              IPC / Quản lý cửa sổ / HTTP Bridge    |  |
+|  +----------------------------------------------------+  |
+|                                                          |
+|  +----------------------------------------------------+  |
+|  |          P2P Node Engine  [Giai đoạn 2]             |  |
+|  |                                                     |  |
+|  |          WebRTC Relay / DHT Discovery               |  |
+|  |          Phân phối chunk / Định tuyến stream        |  |
+|  +----------------------------------------------------+  |
+|                                                          |
++----------------------------------------------------------+
+        |                                    |
+        v                                    v
+   [ Các QanPrism Node khác ]   [ Các QanPrism Node khác ]
+        |                                    |
+        +----------------+------------------+
+                         |
+              Mạng Phi Tập Trung
+              (Không máy chủ trung tâm)
+```
+
+## Bắt Đầu
+
+**Yêu cầu**
+- [Node.js](https://nodejs.org/) v18 trở lên
+- [Rust](https://www.rust-lang.org/tools/install) stable toolchain
+- [Ollama](https://ollama.com/) hoặc [LM Studio](https://lmstudio.ai/) (tuỳ chọn, cho AI cục bộ)
+
+**Phát triển**
+
+```bash
+git clone https://github.com/Qanexra/QANPRISM.git
+cd QANPRISM
+npm install
+npm run tauri dev
+```
+
+## Giấy Phép
+
+MIT License. Xem [LICENSE](LICENSE) để biết chi tiết.
+
+## Hỗ Trợ
+
+QanPrism là mã nguồn mở. Nếu dự án này hữu ích với bạn, hãy cân nhắc tài trợ qua [GitHub Sponsors](https://github.com/sponsors/Qanexra).
+
+Liên hệ: raymond@qanexra.com
 
 ---
 
+# English
+
 ## What is QanPrism
 
-QanPrism is a lightweight web browser built on Tauri and Rust. It uses your operating system's native web engine instead of bundling its own, which drops the memory footprint to around 30-80 MB — roughly 90% less than Chrome.
+QanPrism is a lightweight, open-source web browser built on Tauri and Rust. It uses your operating system's native web engine instead of bundling its own, which drops the memory footprint to around 30-80 MB — roughly 90% less than Chrome.
 
 It ships with a built-in AI sidebar that connects to local models running on your machine (Ollama, LM Studio) or cloud APIs (DeepSeek, OpenAI). The agent can read the page you are currently looking at and answer questions about it, extract data from tables, or help with research.
 
@@ -47,29 +138,25 @@ The long-term vision is to build a **decentralized livestreaming network** on to
 
 This idea came from watching what happened during Mrs. Hang's livestream sessions in Vietnam — platforms like Facebook, TikTok, and YouTube repeatedly interrupted and blocked her streams because they had the power to do so. A truly decentralized network removes that single point of failure entirely.
 
-Phase 1 is the browser. Phase 2 is the streaming protocol.
-
----
+**Phase 1 is the browser. Phase 2 is the streaming protocol.**
 
 ## Features
 
-### Browser
+**Browser**
 - Native web engine (WebView2 on Windows, WebKit on macOS/Linux)
 - Baseline memory: 30-80 MB
 - Custom frameless UI with integrated tabs
 
-### Local AI Agent
+**Local AI Agent**
 - Supports Ollama, LM Studio, and any OpenAI-compatible API
 - Auto-discovers models installed on your machine
 - Reads the active page and injects context into the LLM
 - Zero API cost when running local models
 
-### Data Extraction
+**Data Extraction**
 - Export HTML tables to CSV, JSON, or Parquet
 - SEC filing parser (10-K, 10-Q)
 - Cross-tab data comparison
-
----
 
 ## Architecture
 
@@ -110,16 +197,14 @@ Each QanPrism instance is both a browser and a network node.
               (No central server)
 ```
 
----
-
 ## Getting Started
 
-### 1. Prerequisites
+**Prerequisites**
 - [Node.js](https://nodejs.org/) v18 or later
 - [Rust](https://www.rust-lang.org/tools/install) stable toolchain
 - [Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/) (optional, for local AI)
 
-### 2. Development Setup
+**Development**
 
 ```bash
 git clone https://github.com/Qanexra/QANPRISM.git
@@ -128,13 +213,11 @@ npm install
 npm run tauri dev
 ```
 
-### 3. Build for Production
+**Build for production**
 
 ```bash
 npm run tauri build
 ```
-
----
 
 ## Documentation
 
@@ -145,21 +228,9 @@ npm run tauri build
 | [SECURITY.md](./SECURITY.md) | Security policy |
 | [CHANGELOG.md](./CHANGELOG.md) | Release history |
 
----
-
-## Contributing
-
-We welcome contributions. See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
-
-This project follows a [Code of Conduct](./CODE_OF_CONDUCT.md).
-
----
-
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
+MIT License. See [LICENSE](LICENSE) for details.
 
 ## Support
 
@@ -168,9 +239,9 @@ QanPrism is open-source. If this project is useful to you, consider sponsoring v
 ---
 
 <div align="center">
-  
-**Developed by Qanexra**
-  
-For inquiries: raymond@qanexra.com
-  
+
+**Developed by Qanexra from Vietnam**
+
+raymond@qanexra.com
+
 </div>
