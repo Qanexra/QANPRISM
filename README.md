@@ -74,7 +74,12 @@ Phase 1 is the browser. Phase 2 is the streaming protocol.
 ## Architecture
 
 ```text
-QanPrism UI (React + Vite)
+       [ Decentralized P2P Mesh Network ]
+       (Video Streams / WebRTC / DHT / Peers)
+                 |         |
+                 +----+----+
+                      |
+QanPrism Node (Local Browser Instance)
         |
    Tauri Core (Rust)
         |

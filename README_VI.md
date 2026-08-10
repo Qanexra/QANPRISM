@@ -71,6 +71,30 @@ Giai doan 1 la trinh duyet. Giai doan 2 la giao thuc phat song.
 
 ---
 
+## Kien Truc
+
+```text
+       [ Mang P2P Phi Tap Trung ]
+       (Video Streams / WebRTC / DHT / Peers)
+                 |         |
+                 +----+----+
+                      |
+QanPrism Node (Trinh Duyet Cuc Bo)
+        |
+   Tauri Core (Rust)
+        |
+   +----+----+
+   |         |
+ WebView   AI Router (Giao thuc OpenAI)
+             |
+        +----+----+
+        |         |
+   Local LLMs   Cloud APIs
+  (Ollama/LM)   (DeepSeek/OpenAI)
+```
+
+---
+
 ## Bat Dau
 
 ### 1. Yeu cau
