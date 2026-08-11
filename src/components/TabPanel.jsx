@@ -134,6 +134,8 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
   useEffect(() => {
     const handleMessage = (event) => {
       if (!event.data) return;
+      // Strict source isolation: ONLY process events originating from this tab's own iframe!
+      if (event.source !== iframeRef.current?.contentWindow) return;
 
       if (event.data.type === 'QANPRISM_NAVIGATE' && event.data.url) {
         navigateTo(event.data.url);
