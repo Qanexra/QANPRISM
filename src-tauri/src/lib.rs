@@ -446,6 +446,13 @@ pub fn run() {
             let mut builder = tauri::http::Response::builder()
                 .status(response.status().as_u16());
 
+            // Capture content-type for HTML rewriting decision later
+            let builder_content_type = response.headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_lowercase();
+
             for (k, v) in response.headers() {
                 let k_lower = k.as_str().to_lowercase();
                 // Strip CORS blocks
@@ -476,7 +483,117 @@ pub fn run() {
             }
 
             let bytes = response.bytes().unwrap_or_default().to_vec();
-            builder.body(bytes).unwrap_or_else(|_| {
+            
+            // Check if this is an HTML response — if so, rewrite URLs to keep navigation inside our proxy
+            let content_type = builder_content_type.clone();
+            let final_body = if content_type.contains("text/html") {
+                if let Ok(mut html) = String::from_utf8(bytes.clone()) {
+                    // Rewrite absolute URLs for LinkedIn and its CDN domains to route through our proxy
+                    let domains_to_rewrite = vec![
+                        "https://www.linkedin.com",
+                        "https://static.licdn.com",
+                        "https://static-exp1.licdn.com",
+                        "https://static-exp2.licdn.com",
+                        "https://media.licdn.com",
+                        "https://platform.linkedin.com",
+                        "https://www.google.com",
+                        "https://accounts.google.com",
+                    ];
+                    
+                    for domain in &domains_to_rewrite {
+                        let encoded = urlencoding::encode(domain);
+                        // Rewrite href="https://..." and src="https://..." etc
+                        let proxy_url = format!("http://qanprism.localhost/{}", encoded);
+                        html = html.replace(domain, &proxy_url);
+                    }
+                    
+                    // Inject our navigation interceptor script right after <head>
+                    let interceptor = r#"<script data-qp-injected="true">
+(function() {
+  // Rewrite any URL to go through our proxy
+  function proxyUrl(url) {
+    if (!url || typeof url !== 'string') return url;
+    var s = url.trim();
+    if (s.startsWith('http://qanprism.localhost/')) return s;
+    if (s.startsWith('https://') || s.startsWith('http://')) {
+      return 'http://qanprism.localhost/' + encodeURIComponent(s);
+    }
+    return url;
+  }
+
+  // Intercept fetch()
+  var origFetch = window.fetch;
+  window.fetch = function(input, init) {
+    if (typeof input === 'string') {
+      input = proxyUrl(input);
+    } else if (input && input.url) {
+      input = new Request(proxyUrl(input.url), input);
+    }
+    return origFetch.call(this, input, init);
+  };
+
+  // Intercept XMLHttpRequest.open
+  var origOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    arguments[1] = proxyUrl(url);
+    return origOpen.apply(this, arguments);
+  };
+
+  // Intercept window.location assignments
+  var locationProxy = new Proxy(window.location, {
+    set: function(target, prop, value) {
+      if (prop === 'href') {
+        target.href = proxyUrl(value);
+        return true;
+      }
+      target[prop] = value;
+      return true;
+    }
+  });
+
+  // Intercept link clicks
+  document.addEventListener('click', function(e) {
+    var a = e.target.closest('a');
+    if (a && a.href && !a.href.startsWith('http://qanprism.localhost/') && !a.href.startsWith('javascript:')) {
+      e.preventDefault();
+      window.location.href = proxyUrl(a.href);
+    }
+  }, true);
+
+  // Intercept form submissions
+  document.addEventListener('submit', function(e) {
+    var form = e.target;
+    if (form && form.action && !form.action.startsWith('http://qanprism.localhost/')) {
+      form.action = proxyUrl(form.action);
+    }
+  }, true);
+})();
+</script>"#;
+                    
+                    // Insert after <head> or at the very start
+                    if let Some(pos) = html.find("<head>") {
+                        html.insert_str(pos + 6, interceptor);
+                    } else if let Some(pos) = html.find("<head ") {
+                        // Find the closing > of <head ...>
+                        if let Some(end) = html[pos..].find('>') {
+                            html.insert_str(pos + end + 1, interceptor);
+                        }
+                    } else if let Some(pos) = html.find("<HEAD>") {
+                        html.insert_str(pos + 6, interceptor);
+                    } else {
+                        // Prepend it
+                        html = format!("{}{}", interceptor, html);
+                    }
+                    
+                    html.into_bytes()
+                } else {
+                    bytes
+                }
+            } else {
+                bytes
+            };
+            
+            builder.body(final_body).unwrap_or_else(|_| {
                 tauri::http::Response::builder().status(500).body(b"Internal Error".to_vec()).unwrap()
             })
         } else {
