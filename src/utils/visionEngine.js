@@ -5,8 +5,8 @@
  * 1. Script injection to index all interactive elements with numerical IDs (#1, #2, #3...)
  * 2. Visual Set-of-Marks (SoM) badge overlay generator for Vision models
  * 3. Element interaction dispatcher (click, type, scroll)
- * 4. Comprehensive click, form submit, and link interceptor so all page navigations route via Rust
- * 5. Frame-busting / Clickjacking spoofing so login pages (LinkedIn, Google) run smoothly
+ * 4. Link navigation interceptor for cross-origin browsing
+ * 5. Frame-busting / Clickjacking spoofing so secure login pages run smoothly
  */
 
 export const INJECTED_AGENT_BRIDGE_SCRIPT = `
@@ -24,42 +24,13 @@ export const INJECTED_AGENT_BRIDGE_SCRIPT = `
   var elementMap = {};
   var overlayContainer = null;
 
-  // Intercept all user clicks on links and buttons
+  // Intercept link clicks only (never block buttons or form submits)
   document.addEventListener('click', function(e) {
-    var a = e.target.closest('a');
+    var a = e.target.closest('a[href]');
     if (a && a.href && !a.href.startsWith('javascript:') && !a.href.startsWith('#')) {
       e.preventDefault();
       e.stopPropagation();
       window.parent.postMessage({ type: 'QANPRISM_NAVIGATE', url: a.href }, '*');
-      return false;
-    }
-
-    var btn = e.target.closest('button, [role="button"], [role="link"], [data-href]');
-    if (btn) {
-      var href = btn.getAttribute('href') || btn.getAttribute('data-href') || btn.getAttribute('data-url');
-      if (href && !href.startsWith('javascript:') && !href.startsWith('#')) {
-        e.preventDefault();
-        e.stopPropagation();
-        window.parent.postMessage({ type: 'QANPRISM_NAVIGATE', url: href }, '*');
-        return false;
-      }
-    }
-  }, true);
-
-  // Intercept form submissions
-  document.addEventListener('submit', function(e) {
-    var form = e.target;
-    if (form && form.action) {
-      e.preventDefault();
-      e.stopPropagation();
-      var method = (form.method || 'GET').toUpperCase();
-      var formData = new FormData(form);
-      var params = new URLSearchParams(formData);
-      var actionUrl = form.action;
-      if (method === 'GET') {
-        actionUrl = actionUrl + (actionUrl.includes('?') ? '&' : '?') + params.toString();
-      }
-      window.parent.postMessage({ type: 'QANPRISM_NAVIGATE', url: actionUrl }, '*');
       return false;
     }
   }, true);

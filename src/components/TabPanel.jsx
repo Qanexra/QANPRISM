@@ -40,6 +40,13 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
     }
   };
 
+  const isLocalhostUrl = (url) => {
+    return url.startsWith('http://localhost') || 
+           url.startsWith('https://localhost') || 
+           url.startsWith('http://127.0.0.1') || 
+           url.startsWith('https://127.0.0.1');
+  };
+
   const getFinalUrl = (url) => {
     let finalUrl = (url || '').trim();
     if (!finalUrl) return 'https://www.google.com';
@@ -66,10 +73,19 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
     if (finalUrl !== tab.url) {
       onUpdateUrl(finalUrl);
     }
+
+    // Localhost sites (mailboxes, internal dev servers) load directly via native iframe
+    if (isLocalhostUrl(finalUrl)) {
+      setSrcDoc('');
+      setFallbackSrc(finalUrl);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      // Fetch webpage HTML via Rust reqwest engine with full browser headers
+      // Fetch webpage HTML via Rust reqwest engine with persistent cookies and browser headers
       const res = await invoke('fetch_page_context', { url: finalUrl });
       const rawHtml = typeof res === 'string' ? res : (res?.html || '');
       const resolvedUrl = (typeof res === 'object' && res?.url) ? res.url : finalUrl;
@@ -295,7 +311,6 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
             ref={iframeRef}
             src={fallbackSrc}
             title={tab.title || "Browser View"}
-            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
             style={{ width: '100%', height: '100%', border: 'none' }}
           />
         ) : null}
