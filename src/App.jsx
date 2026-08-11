@@ -81,7 +81,6 @@ function App() {
   };
 
   const closeTab = (tabId) => {
-    invoke('close_tab_webview', { tabId }).catch(() => {});
     const newTabs = tabs.filter(tab => tab.id !== tabId);
     setTabs(newTabs);
     if (currentTabId === tabId) {
