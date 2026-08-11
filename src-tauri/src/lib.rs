@@ -384,6 +384,7 @@ fn create_or_update_tab_webview(
                 let _ = existing.set_size(LogicalSize::new(width, height));
                 if visible {
                     let _ = existing.show();
+                    let _ = existing.set_focus();
                     if let Ok(current_url) = existing.url() {
                         if current_url.as_str() != url && !url.is_empty() {
                             if let Ok(parsed) = url.parse() {
@@ -406,7 +407,10 @@ fn create_or_update_tab_webview(
                             LogicalSize::new(width, height),
                         ) {
                             Ok(wv) => {
-                                if !visible {
+                                if visible {
+                                    let _ = wv.show();
+                                    let _ = wv.set_focus();
+                                } else {
                                     let _ = wv.hide();
                                 }
                             },
