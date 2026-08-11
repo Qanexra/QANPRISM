@@ -5,7 +5,7 @@
  * 1. Script injection to index all interactive elements with numerical IDs (#1, #2, #3...)
  * 2. Visual Set-of-Marks (SoM) badge overlay generator for Vision models
  * 3. Element interaction dispatcher (click, type, scroll)
- * 4. Link navigation interceptor for cross-origin browsing
+ * 4. Search and link navigation interceptor for cross-origin browsing
  * 5. Frame-busting / Clickjacking spoofing so secure login pages run smoothly
  */
 
@@ -24,13 +24,35 @@ export const INJECTED_AGENT_BRIDGE_SCRIPT = `
   var elementMap = {};
   var overlayContainer = null;
 
-  // Intercept link clicks only (never block buttons or form submits)
+  // Intercept link clicks
   document.addEventListener('click', function(e) {
     var a = e.target.closest('a[href]');
     if (a && a.href && !a.href.startsWith('javascript:') && !a.href.startsWith('#')) {
       e.preventDefault();
       e.stopPropagation();
       window.parent.postMessage({ type: 'QANPRISM_NAVIGATE', url: a.href }, '*');
+      return false;
+    }
+  }, true);
+
+  // Intercept search engine and GET form submissions (e.g. Google, Bing, DuckDuckGo)
+  document.addEventListener('submit', function(e) {
+    var form = e.target;
+    if (!form) return;
+    var method = (form.method || 'GET').toUpperCase();
+    if (method === 'GET') {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        var formData = new FormData(form);
+        var params = new URLSearchParams(formData);
+        var actionUrl = form.action || window.location.href;
+        var separator = actionUrl.includes('?') ? '&' : '?';
+        var targetUrl = actionUrl + separator + params.toString();
+        window.parent.postMessage({ type: 'QANPRISM_NAVIGATE', url: targetUrl }, '*');
+      } catch(err) {
+        console.error("Form navigation intercept error:", err);
+      }
       return false;
     }
   }, true);
