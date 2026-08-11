@@ -4,12 +4,14 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
+use tauri::{AppHandle, Manager, WebviewBuilder, WebviewUrl, LogicalPosition, LogicalSize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PageResponse {
     pub html: String,
     pub url: String,
     pub status: u16,
+    pub cookies: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -32,6 +34,7 @@ pub struct LogEntry {
 
 static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
 static LOG_BUFFER: OnceLock<Mutex<Vec<LogEntry>>> = OnceLock::new();
+static COOKIE_JAR: OnceLock<Mutex<HashMap<String, HashMap<String, String>>>> = OnceLock::new();
 
 fn get_client() -> &'static reqwest::blocking::Client {
     CLIENT.get_or_init(|| {
@@ -46,6 +49,57 @@ fn get_client() -> &'static reqwest::blocking::Client {
 
 fn get_log_buffer() -> &'static Mutex<Vec<LogEntry>> {
     LOG_BUFFER.get_or_init(|| Mutex::new(Vec::with_capacity(500)))
+}
+
+fn get_cookie_jar() -> &'static Mutex<HashMap<String, HashMap<String, String>>> {
+    COOKIE_JAR.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn save_response_cookies(url_str: &str, headers: &reqwest::header::HeaderMap) {
+    let domain = if let Ok(parsed_url) = reqwest::Url::parse(url_str) {
+        parsed_url.host_str().unwrap_or("").to_string()
+    } else {
+        return;
+    };
+
+    if let Ok(mut jar) = get_cookie_jar().lock() {
+        let domain_cookies = jar.entry(domain.clone()).or_insert_with(HashMap::new);
+        for cookie_header in headers.get_all(reqwest::header::SET_COOKIE) {
+            if let Ok(cookie_str) = cookie_header.to_str() {
+                if let Some(first_part) = cookie_str.split(';').next() {
+                    let mut kv = first_part.splitn(2, '=');
+                    if let (Some(k), Some(v)) = (kv.next(), kv.next()) {
+                        let k_clean = k.trim().to_string();
+                        let v_clean = v.trim().to_string();
+                        if !k_clean.is_empty() {
+                            domain_cookies.insert(k_clean, v_clean);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn get_cookies_for_url(url_str: &str) -> String {
+    let host = if let Ok(parsed_url) = reqwest::Url::parse(url_str) {
+        parsed_url.host_str().unwrap_or("").to_string()
+    } else {
+        return String::new();
+    };
+
+    let mut result_map = HashMap::new();
+    if let Ok(jar) = get_cookie_jar().lock() {
+        for (domain, cookies) in jar.iter() {
+            if host.ends_with(domain) || domain.ends_with(&host) || host == *domain {
+                for (k, v) in cookies {
+                    result_map.insert(k.clone(), v.clone());
+                }
+            }
+        }
+    }
+
+    result_map.iter().map(|(k, v)| format!("{}={}", k, v)).collect::<Vec<_>>().join("; ")
 }
 
 fn get_current_timestamp() -> String {
@@ -142,6 +196,8 @@ fn fetch_page_context(url: String) -> Result<PageResponse, String> {
     let status = response.status().as_u16();
     let elapsed = start_time.elapsed().as_millis();
 
+    save_response_cookies(&final_url, response.headers());
+
     let html = match response.text() {
         Ok(text) => text,
         Err(err) => {
@@ -166,10 +222,13 @@ fn fetch_page_context(url: String) -> Result<PageResponse, String> {
         redirect_info.as_deref()
     );
 
+    let cookies = get_cookies_for_url(&final_url);
+
     Ok(PageResponse {
         html,
         url: final_url,
         status,
+        cookies,
     })
 }
 
@@ -215,6 +274,8 @@ fn submit_form_context(
     let status = response.status().as_u16();
     let elapsed = start_time.elapsed().as_millis();
 
+    save_response_cookies(&final_url, response.headers());
+
     let html = match response.text() {
         Ok(text) => text,
         Err(err) => {
@@ -239,10 +300,13 @@ fn submit_form_context(
         redirect_info.as_deref()
     );
 
+    let cookies = get_cookies_for_url(&final_url);
+
     Ok(PageResponse {
         html,
         url: final_url,
         status,
+        cookies,
     })
 }
 
@@ -279,6 +343,8 @@ fn fetch_api_context(
     let status = response.status().as_u16();
     let status_text = response.status().canonical_reason().unwrap_or("OK").to_string();
     
+    save_response_cookies(&url, response.headers());
+
     let mut resp_headers = HashMap::new();
     for (k, v) in response.headers() {
         if let Ok(val_str) = v.to_str() {
@@ -296,10 +362,81 @@ fn fetch_api_context(
     })
 }
 
+#[tauri::command]
+fn create_or_update_tab_webview(
+    app: AppHandle,
+    tab_id: String,
+    url: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    visible: bool,
+) -> Result<(), String> {
+    let window = app.get_window("main").ok_or("Main window not found")?;
+
+    if let Some(existing) = app.get_webview(&tab_id) {
+        let _ = existing.set_position(LogicalPosition::new(x, y));
+        let _ = existing.set_size(LogicalSize::new(width, height));
+        if visible {
+            let _ = existing.show();
+            if let Ok(current_url) = existing.url() {
+                if current_url.as_str() != url && !url.is_empty() {
+                    if let Ok(parsed) = url.parse() {
+                        let _ = existing.navigate(parsed);
+                    }
+                }
+            }
+        } else {
+            let _ = existing.hide();
+        }
+    } else {
+        if !url.is_empty() {
+            if let Ok(parsed) = url.parse() {
+                let builder = WebviewBuilder::new(&tab_id, WebviewUrl::External(parsed))
+                    .auto_resize();
+
+                if let Ok(wv) = window.add_child(
+                    builder,
+                    LogicalPosition::new(x, y),
+                    LogicalSize::new(width, height),
+                ) {
+                    if !visible {
+                        let _ = wv.hide();
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn navigate_tab_webview(app: AppHandle, tab_id: String, url: String) -> Result<(), String> {
+    if let Some(existing) = app.get_webview(&tab_id) {
+        if let Ok(parsed) = url.parse() {
+            existing.navigate(parsed).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn close_tab_webview(app: AppHandle, tab_id: String) -> Result<(), String> {
+    if let Some(existing) = app.get_webview(&tab_id) {
+        let _ = existing.close();
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
     .invoke_handler(tauri::generate_handler![
+        create_or_update_tab_webview,
+        navigate_tab_webview,
+        close_tab_webview,
         fetch_page_context,
         submit_form_context,
         fetch_api_context,

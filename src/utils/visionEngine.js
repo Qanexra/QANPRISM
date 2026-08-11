@@ -85,6 +85,48 @@ export const INJECTED_AGENT_BRIDGE_SCRIPT = `
     }
   })();
 
+  // Polyfill document.cookie with real session tokens (JSESSIONID, li_at, bcookie, etc.)
+  (function() {
+    var memoryCookies = {};
+    if (window.__QANPRISM_COOKIES__) {
+      var rawList = window.__QANPRISM_COOKIES__.split(';');
+      for (var i = 0; i < rawList.length; i++) {
+        var raw = rawList[i].trim();
+        if (raw) {
+          var eqIdx = raw.indexOf('=');
+          if (eqIdx > 0) {
+            var k = raw.substring(0, eqIdx).trim();
+            var v = raw.substring(eqIdx + 1).trim();
+            memoryCookies[k] = v;
+          }
+        }
+      }
+    }
+
+    try {
+      Object.defineProperty(document, 'cookie', {
+        get: function() {
+          var pairs = [];
+          for (var k in memoryCookies) {
+            pairs.push(k + '=' + memoryCookies[k]);
+          }
+          return pairs.join('; ');
+        },
+        set: function(val) {
+          if (!val) return;
+          var firstPart = val.split(';')[0].trim();
+          var eqIdx = firstPart.indexOf('=');
+          if (eqIdx > 0) {
+            var k = firstPart.substring(0, eqIdx).trim();
+            var v = firstPart.substring(eqIdx + 1).trim();
+            memoryCookies[k] = v;
+          }
+        },
+        configurable: true
+      });
+    } catch(e) {}
+  })();
+
   // In-page API Proxy Bridge for SPAs (LinkedIn, Twitter, Google, etc.)
   if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
     var originalFetch = window.fetch;

@@ -71,11 +71,13 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
     return finalUrl;
   };
 
-  const prepareHtmlPayload = (rawHtml, resolvedUrl) => {
+  const prepareHtmlPayload = (rawHtml, resolvedUrl, cookies = '') => {
     if (!rawHtml || typeof rawHtml !== 'string') return '';
 
     const baseTag = `<base href="${resolvedUrl}" target="_self">`;
-    const scriptPayload = `<script>${INJECTED_AGENT_BRIDGE_SCRIPT}</script>`;
+    const escapedCookies = (cookies || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const cookieInitScript = `window.__QANPRISM_COOKIES__ = "${escapedCookies}";`;
+    const scriptPayload = `<script>${cookieInitScript}${INJECTED_AGENT_BRIDGE_SCRIPT}</script>`;
 
     let processed = rawHtml;
 
@@ -117,6 +119,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       const res = await invoke('fetch_page_context', { url: finalUrl });
       const rawHtml = typeof res === 'string' ? res : (res?.html || '');
       const resolvedUrl = (typeof res === 'object' && res?.url) ? res.url : finalUrl;
+      const cookies = (typeof res === 'object' && res?.cookies) ? res.cookies : '';
 
       if (resolvedUrl && resolvedUrl !== finalUrl) {
         setUrlInput(resolvedUrl);
@@ -132,7 +135,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
           }
         }
 
-        const processedHtml = prepareHtmlPayload(rawHtml, resolvedUrl);
+        const processedHtml = prepareHtmlPayload(rawHtml, resolvedUrl, cookies);
         setFallbackSrc('');
         setSrcDoc(processedHtml);
       } else {
@@ -159,6 +162,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
 
       const rawHtml = typeof res === 'string' ? res : (res?.html || '');
       const resolvedUrl = (typeof res === 'object' && res?.url) ? res.url : formUrl;
+      const cookies = (typeof res === 'object' && res?.cookies) ? res.cookies : '';
 
       if (resolvedUrl && resolvedUrl !== tab.url) {
         setUrlInput(resolvedUrl);
@@ -174,7 +178,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
           }
         }
 
-        const processedHtml = prepareHtmlPayload(rawHtml, resolvedUrl);
+        const processedHtml = prepareHtmlPayload(rawHtml, resolvedUrl, cookies);
         setFallbackSrc('');
         setSrcDoc(processedHtml);
       } else {
