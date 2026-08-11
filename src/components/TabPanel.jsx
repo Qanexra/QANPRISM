@@ -159,13 +159,6 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       const rawHtml = typeof res === 'string' ? res : (res?.html || '');
       const resolvedUrl = (typeof res === 'object' && res?.url) ? res.url : formUrl;
 
-      // If LinkedIn login submitted, automatically transition to the user's live feed
-      if (resolvedUrl && (resolvedUrl.includes('login-submit') || resolvedUrl.includes('checkpoint/lg/login-submit'))) {
-        Logger.info('Auth', 'LinkedIn authentication successful. Navigating to live feed...');
-        navigateTo('https://www.linkedin.com/feed/');
-        return;
-      }
-
       if (resolvedUrl && resolvedUrl !== tab.url) {
         setUrlInput(resolvedUrl);
         onUpdateUrl(resolvedUrl);

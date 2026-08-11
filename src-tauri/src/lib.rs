@@ -36,7 +36,7 @@ static LOG_BUFFER: OnceLock<Mutex<Vec<LogEntry>>> = OnceLock::new();
 fn get_client() -> &'static reqwest::blocking::Client {
     CLIENT.get_or_init(|| {
         reqwest::blocking::Client::builder()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 QanPrism/1.0")
             .timeout(std::time::Duration::from_secs(20))
             .cookie_store(true)
             .build()
