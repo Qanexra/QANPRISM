@@ -373,60 +373,77 @@ fn create_or_update_tab_webview(
     height: f64,
     visible: bool,
 ) -> Result<(), String> {
-    let window = app.get_window("main").ok_or("Main window not found")?;
-
-    if let Some(existing) = app.get_webview(&tab_id) {
-        let _ = existing.set_position(LogicalPosition::new(x, y));
-        let _ = existing.set_size(LogicalSize::new(width, height));
-        if visible {
-            let _ = existing.show();
-            if let Ok(current_url) = existing.url() {
-                if current_url.as_str() != url && !url.is_empty() {
+    println!("create_or_update_tab_webview: tab={} url={} x={} y={} w={} h={} visible={}", tab_id, url, x, y, width, height, visible);
+    
+    let app_handle = app.clone();
+    
+    let _ = app.run_on_main_thread(move || {
+        if let Some(window) = app_handle.get_window("main") {
+            if let Some(existing) = app_handle.get_webview(&tab_id) {
+                let _ = existing.set_position(LogicalPosition::new(x, y));
+                let _ = existing.set_size(LogicalSize::new(width, height));
+                if visible {
+                    let _ = existing.show();
+                    if let Ok(current_url) = existing.url() {
+                        if current_url.as_str() != url && !url.is_empty() {
+                            if let Ok(parsed) = url.parse() {
+                                let _ = existing.navigate(parsed);
+                            }
+                        }
+                    }
+                } else {
+                    let _ = existing.hide();
+                }
+            } else {
+                if !url.is_empty() {
                     if let Ok(parsed) = url.parse() {
-                        let _ = existing.navigate(parsed);
-                    }
-                }
-            }
-        } else {
-            let _ = existing.hide();
-        }
-    } else {
-        if !url.is_empty() {
-            if let Ok(parsed) = url.parse() {
-                let builder = WebviewBuilder::new(&tab_id, WebviewUrl::External(parsed))
-                    .auto_resize();
+                        let builder = WebviewBuilder::new(&tab_id, WebviewUrl::External(parsed))
+                            .auto_resize();
 
-                if let Ok(wv) = window.add_child(
-                    builder,
-                    LogicalPosition::new(x, y),
-                    LogicalSize::new(width, height),
-                ) {
-                    if !visible {
-                        let _ = wv.hide();
+                        match window.add_child(
+                            builder,
+                            LogicalPosition::new(x, y),
+                            LogicalSize::new(width, height),
+                        ) {
+                            Ok(wv) => {
+                                if !visible {
+                                    let _ = wv.hide();
+                                }
+                            },
+                            Err(e) => {
+                                eprintln!("Failed to add child webview for tab {}: {:?}", tab_id, e);
+                            }
+                        }
                     }
                 }
             }
         }
-    }
+    });
 
     Ok(())
 }
 
 #[tauri::command]
 fn navigate_tab_webview(app: AppHandle, tab_id: String, url: String) -> Result<(), String> {
-    if let Some(existing) = app.get_webview(&tab_id) {
-        if let Ok(parsed) = url.parse() {
-            existing.navigate(parsed).map_err(|e| e.to_string())?;
+    let app_handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(existing) = app_handle.get_webview(&tab_id) {
+            if let Ok(parsed) = url.parse() {
+                let _ = existing.navigate(parsed);
+            }
         }
-    }
+    });
     Ok(())
 }
 
 #[tauri::command]
 fn close_tab_webview(app: AppHandle, tab_id: String) -> Result<(), String> {
-    if let Some(existing) = app.get_webview(&tab_id) {
-        let _ = existing.close();
-    }
+    let app_handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(existing) = app_handle.get_webview(&tab_id) {
+            let _ = existing.close();
+        }
+    });
     Ok(())
 }
 
