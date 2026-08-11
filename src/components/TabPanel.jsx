@@ -1,14 +1,18 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { RefreshCw, ArrowLeft, ArrowRight, ShieldCheck } from 'lucide-react';
+import { RefreshCw, ArrowLeft, ArrowRight, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { INJECTED_AGENT_BRIDGE_SCRIPT } from '../utils/visionEngine';
 
 const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
   const [urlInput, setUrlInput] = useState(tab.url);
   const [history, setHistory] = useState([tab.url]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  const [srcDoc, setSrcDoc] = useState('');
+  const [fallbackSrc, setFallbackSrc] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showVisionOverlay, setShowVisionOverlay] = useState(false);
   
-  const containerRef = useRef(null);
+  const iframeRef = useRef(null);
   const lastLoadedUrlRef = useRef('');
 
   const isValidUrl = (str) => {
@@ -36,6 +40,13 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
     }
   };
 
+  const isLocalhostUrl = (url) => {
+    return url.startsWith('http://localhost') || 
+           url.startsWith('https://localhost') || 
+           url.startsWith('http://127.0.0.1') || 
+           url.startsWith('https://127.0.0.1');
+  };
+
   const getFinalUrl = (url) => {
     let finalUrl = (url || '').trim();
     if (!finalUrl) return 'https://www.google.com';
@@ -53,25 +64,6 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
     return finalUrl;
   };
 
-  const syncNativeWebview = useCallback(async (targetUrl) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
-
-    try {
-      await invoke('create_or_update_tab_webview', {
-        label: tab.id,
-        url: targetUrl,
-        x: Math.round(rect.left),
-        y: Math.round(rect.top),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height)
-      });
-    } catch (err) {
-      console.warn("create_or_update_tab_webview error:", err);
-    }
-  }, [tab.id]);
-
   const loadUrl = useCallback(async (rawUrl) => {
     const finalUrl = getFinalUrl(rawUrl);
     if (finalUrl === lastLoadedUrlRef.current) return;
@@ -82,66 +74,126 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       onUpdateUrl(finalUrl);
     }
 
-    setIsLoading(true);
-    await syncNativeWebview(finalUrl);
-    setIsLoading(false);
-  }, [tab.url, onUpdateUrl, syncNativeWebview]);
+    // Localhost endpoints (webmail, dev servers) load directly via native iframe for 100% native logins & cookies
+    if (isLocalhostUrl(finalUrl)) {
+      setSrcDoc('');
+      setFallbackSrc(finalUrl);
+      setIsLoading(false);
+      return;
+    }
 
-  // Initial load or tab URL change
+    setIsLoading(true);
+
+    try {
+      // Fetch webpage HTML via Rust reqwest engine with persistent cookies and browser headers
+      const res = await invoke('fetch_page_context', { url: finalUrl });
+      const rawHtml = typeof res === 'string' ? res : (res?.html || '');
+      const resolvedUrl = (typeof res === 'object' && res?.url) ? res.url : finalUrl;
+
+      // Update address bar if redirected (e.g. linkedin.com -> www.linkedin.com)
+      if (resolvedUrl && resolvedUrl !== finalUrl) {
+        setUrlInput(resolvedUrl);
+        onUpdateUrl(resolvedUrl);
+      }
+
+      if (rawHtml && typeof rawHtml === 'string' && (rawHtml.includes('<html') || rawHtml.includes('<!DOCTYPE') || rawHtml.includes('<body'))) {
+        // Extract title
+        const titleMatch = rawHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
+        if (titleMatch && titleMatch[1]) {
+          const newTitle = titleMatch[1].trim();
+          if (newTitle !== tab.title) {
+            onUpdateTitle(newTitle);
+          }
+        }
+
+        // Script to inject for link navigation, form interception, and AI Agent control bridge
+        const scriptPayload = `
+          <script>
+            ${INJECTED_AGENT_BRIDGE_SCRIPT}
+          </script>
+        `;
+
+        // Base tag so relative resources (CSS, JS, images, fonts) resolve to origin domain
+        const baseTag = `<base href="${resolvedUrl}" target="_self">`;
+
+        let processedHtml = rawHtml;
+        if (processedHtml.includes('<head>')) {
+          processedHtml = processedHtml.replace('<head>', `<head>${baseTag}${scriptPayload}`);
+        } else if (processedHtml.includes('<html')) {
+          processedHtml = processedHtml.replace(/(<html[^>]*>)/i, `$1<head>${baseTag}${scriptPayload}</head>`);
+        } else {
+          processedHtml = `${baseTag}${scriptPayload}` + processedHtml;
+        }
+
+        setFallbackSrc('');
+        setSrcDoc(processedHtml);
+      } else {
+        setSrcDoc('');
+        setFallbackSrc(resolvedUrl || finalUrl);
+      }
+    } catch (err) {
+      console.warn("fetch_page_context failed, falling back to direct iframe:", err);
+      setSrcDoc('');
+      setFallbackSrc(finalUrl);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [tab.url, tab.title, onUpdateUrl, onUpdateTitle]);
+
   useEffect(() => {
     if (tab.url && tab.url !== lastLoadedUrlRef.current) {
       loadUrl(tab.url);
     }
   }, [tab.url, loadUrl]);
 
-  // Visibility management when switching tabs
+  // Handle messages from the iframe and commands from the Agent (scoped to active tab)
   useEffect(() => {
-    invoke('set_tab_webview_visibility', {
-      label: tab.id,
-      visible: isActive
-    }).catch(() => {});
+    const handleMessage = (event) => {
+      if (!event.data) return;
+      // Strict source isolation: ONLY process events originating from this tab's own iframe!
+      if (event.source !== iframeRef.current?.contentWindow) return;
 
-    if (isActive && lastLoadedUrlRef.current && containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        invoke('set_tab_webview_bounds', {
-          label: tab.id,
-          x: Math.round(rect.left),
-          y: Math.round(rect.top),
-          width: Math.round(rect.width),
-          height: Math.round(rect.height)
-        }).catch(() => {});
-      }
-    }
-  }, [tab.id, isActive]);
-
-  // Handle window resizing
-  useEffect(() => {
-    const handleResize = () => {
-      if (containerRef.current && isActive) {
-        const rect = containerRef.current.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) {
-          invoke('set_tab_webview_bounds', {
-            label: tab.id,
-            x: Math.round(rect.left),
-            y: Math.round(rect.top),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height)
-          }).catch(() => {});
-        }
+      if (event.data.type === 'QANPRISM_NAVIGATE' && event.data.url) {
+        navigateTo(event.data.url);
+      } else if (event.data.type === 'QP_BRIDGE_READY' && isActive) {
+        window.dispatchEvent(new CustomEvent('QP_ACTIVE_TAB_BRIDGE_READY', { detail: { tabId: tab.id } }));
+      } else if ((event.data.type === 'QP_AGENT_STATE_RESPONSE' || event.data.type === 'QP_AGENT_ACTION_RESULT') && isActive) {
+        window.dispatchEvent(new CustomEvent(event.data.type, { detail: event.data }));
       }
     };
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [tab.id, isActive]);
+    // Agent -> Tab Panel command listener (only active tab responds)
+    const handleAgentCommand = (e) => {
+      if (!isActive || !iframeRef.current || !iframeRef.current.contentWindow) return;
+      const { action, actionId, requestId, type } = e.detail || {};
 
-  // Clean up native webview on tab close
-  useEffect(() => {
+      if (type === 'QP_AGENT_EXECUTE_ACTION') {
+        iframeRef.current.contentWindow.postMessage({
+          type: 'QP_AGENT_EXECUTE_ACTION',
+          action,
+          actionId
+        }, '*');
+      } else if (type === 'QP_AGENT_GET_STATE') {
+        iframeRef.current.contentWindow.postMessage({
+          type: 'QP_AGENT_GET_STATE',
+          requestId
+        }, '*');
+      } else if (type === 'QP_AGENT_TOGGLE_BADGES') {
+        iframeRef.current.contentWindow.postMessage({
+          type: 'QP_AGENT_TOGGLE_BADGES',
+          show: e.detail.show
+        }, '*');
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    window.addEventListener('QP_DISPATCH_TO_TAB', handleAgentCommand);
+
     return () => {
-      invoke('close_tab_webview', { label: tab.id }).catch(() => {});
+      window.removeEventListener('message', handleMessage);
+      window.removeEventListener('QP_DISPATCH_TO_TAB', handleAgentCommand);
     };
-  }, [tab.id]);
+  }, [tab.id, isActive, history, historyIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const navigateTo = (url) => {
     const finalUrl = getFinalUrl(url);
@@ -180,8 +232,19 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
 
   const reload = () => {
     const currentUrl = history[historyIndex] || tab.url;
-    lastLoadedUrlRef.current = '';
+    lastLoadedUrlRef.current = ''; // force reload
     loadUrl(currentUrl);
+  };
+
+  const toggleVisionMarks = () => {
+    const nextState = !showVisionOverlay;
+    setShowVisionOverlay(nextState);
+    if (iframeRef.current && iframeRef.current.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({
+        type: 'QP_AGENT_TOGGLE_BADGES',
+        show: nextState
+      }, '*');
+    }
   };
 
   const canGoBack = historyIndex > 0;
@@ -220,14 +283,38 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
             placeholder="Search or enter web address"
           />
         </form>
+
+        {/* Vision Marks Toggle Button */}
+        <button 
+          onClick={toggleVisionMarks}
+          style={{ 
+            color: showVisionOverlay ? 'var(--accent-color, #3b82f6)' : 'var(--text-secondary, #94a3b8)',
+            marginLeft: '4px'
+          }}
+          title={showVisionOverlay ? "Hide AI Vision Markers" : "Show AI Vision Markers (#IDs)"}
+        >
+          {showVisionOverlay ? <Eye size={16} /> : <EyeOff size={16} />}
+        </button>
       </div>
 
-      {/* Native Webview Container */}
-      <div 
-        ref={containerRef} 
-        className="webview-placeholder" 
-        style={{ flex: 1, position: 'relative', width: '100%', height: '100%', backgroundColor: '#fff' }}
-      />
+      <div className="webview-placeholder" style={{ flex: 1, position: 'relative', width: '100%', height: '100%', backgroundColor: '#fff' }}>
+        {srcDoc ? (
+          <iframe
+            ref={iframeRef}
+            srcDoc={srcDoc}
+            title={tab.title || "Browser View"}
+            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
+            style={{ width: '100%', height: '100%', border: 'none' }}
+          />
+        ) : fallbackSrc ? (
+          <iframe
+            ref={iframeRef}
+            src={fallbackSrc}
+            title={tab.title || "Browser View"}
+            style={{ width: '100%', height: '100%', border: 'none' }}
+          />
+        ) : null}
+      </div>
     </div>
   );
 };
