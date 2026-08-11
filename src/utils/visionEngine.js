@@ -8,7 +8,8 @@
  * 4. Search and link navigation interceptor for cross-origin browsing
  * 5. Frame-busting / Clickjacking spoofing so secure login pages run smoothly
  * 6. In-page JavaScript error and diagnostic capture
- * 7. In-page fetch proxy bridge to bypass iframe CORS blocks for Single Page Apps (LinkedIn, Twitter, etc.)
+ * 7. In-page fetch & XHR proxy bridge to bypass iframe CORS blocks for Single Page Apps (LinkedIn, Twitter, etc.)
+ * 8. Safe Storage & Location Polyfills for SPA client-side routers
  */
 
 export const INJECTED_AGENT_BRIDGE_SCRIPT = `
@@ -44,6 +45,45 @@ export const INJECTED_AGENT_BRIDGE_SCRIPT = `
     Object.defineProperty(window, 'parent', { get: function() { return window; }, configurable: true });
     Object.defineProperty(window, 'frameElement', { get: function() { return null; }, configurable: true });
   } catch(e) {}
+
+  // Safe In-Memory Storage Polyfill (prevents SecurityError when SPAs access localStorage/sessionStorage)
+  (function() {
+    function createMockStorage() {
+      var store = {};
+      return {
+        getItem: function(key) { return store[key] !== undefined ? store[key] : null; },
+        setItem: function(key, val) { store[key] = String(val); },
+        removeItem: function(key) { delete store[key]; },
+        clear: function() { store = {}; },
+        key: function(idx) { return Object.keys(store)[idx] || null; },
+        get length() { return Object.keys(store).length; }
+      };
+    }
+
+    try {
+      if (!window.localStorage || typeof window.localStorage.getItem !== 'function') {
+        var mockLocal = createMockStorage();
+        Object.defineProperty(window, 'localStorage', { get: function() { return mockLocal; }, configurable: true });
+      }
+    } catch(e) {
+      try {
+        var fallbackLocal = createMockStorage();
+        Object.defineProperty(window, 'localStorage', { get: function() { return fallbackLocal; }, configurable: true });
+      } catch(err) {}
+    }
+
+    try {
+      if (!window.sessionStorage || typeof window.sessionStorage.getItem !== 'function') {
+        var mockSession = createMockStorage();
+        Object.defineProperty(window, 'sessionStorage', { get: function() { return mockSession; }, configurable: true });
+      }
+    } catch(e) {
+      try {
+        var fallbackSession = createMockStorage();
+        Object.defineProperty(window, 'sessionStorage', { get: function() { return fallbackSession; }, configurable: true });
+      } catch(err) {}
+    }
+  })();
 
   // In-page API Proxy Bridge for SPAs (LinkedIn, Twitter, Google, etc.)
   if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
