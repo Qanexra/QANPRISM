@@ -378,6 +378,27 @@ fn fetch_api_context(
 
 // Legacy webview commands removed as architecture has migrated to qanprism:// protocol
 
+fn sanitize_set_cookie(cookie: &str) -> String {
+    let parts: Vec<&str> = cookie.split(';').collect();
+    let mut new_parts = Vec::new();
+    for part in parts {
+        let trimmed = part.trim();
+        let lower = trimmed.to_lowercase();
+        if lower.starts_with("domain=") {
+            continue;
+        }
+        if lower == "secure" {
+            continue;
+        }
+        if lower.starts_with("samesite=") {
+            new_parts.push("SameSite=Lax");
+            continue;
+        }
+        new_parts.push(trimmed);
+    }
+    new_parts.join("; ")
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -391,6 +412,11 @@ pub fn run() {
             // It's the root iframe request
             if let Ok(decoded) = urlencoding::decode(path) {
                 target_url = decoded.into_owned();
+                if let Some(query) = request.uri().query() {
+                    if !target_url.contains('?') {
+                        target_url = format!("{}?{}", target_url, query);
+                    }
+                }
             }
         } else {
             // It's a relative request, check Referer
@@ -407,13 +433,13 @@ pub fn run() {
                     if ref_path.starts_with("http%3A") || ref_path.starts_with("https%3A") {
                         if let Ok(decoded_ref) = urlencoding::decode(ref_path) {
                             if let Ok(base_url) = reqwest::Url::parse(&decoded_ref) {
-                                // Reconstruct the full URL
-                                let mut final_url = base_url.clone();
-                                final_url.set_path(path);
-                                if let Some(query) = request.uri().query() {
-                                    final_url.set_query(Some(query));
+                                if let Ok(resolved) = base_url.join(&format!("/{}", path)) {
+                                    let mut final_url = resolved;
+                                    if let Some(query) = request.uri().query() {
+                                        final_url.set_query(Some(query));
+                                    }
+                                    target_url = final_url.to_string();
                                 }
-                                target_url = final_url.to_string();
                             }
                         }
                     }
@@ -434,12 +460,12 @@ pub fn run() {
 
         let method_str = request.method().as_str();
         let req_method = reqwest::Method::from_bytes(method_str.as_bytes()).unwrap_or(reqwest::Method::GET);
-        let mut req_builder = client.request(req_method, &target_url);
+        let mut req_builder = client.request(req_method.clone(), &target_url);
 
         // Forward headers safely
         for (k, v) in request.headers() {
             let k_lower = k.as_str().to_lowercase();
-            if k_lower != "host" && k_lower != "origin" && k_lower != "referer" && k_lower != "sec-fetch-site" {
+            if k_lower != "host" && k_lower != "origin" && k_lower != "referer" && k_lower != "sec-fetch-site" && k_lower != "sec-fetch-mode" && k_lower != "sec-fetch-dest" {
                 if let Ok(v_str) = v.to_str() {
                     req_builder = req_builder.header(k.as_str(), v_str);
                 }
@@ -449,7 +475,9 @@ pub fn run() {
         // Add proper origin and referer for the target site to prevent CSRF blocks
         if let Ok(parsed_target) = reqwest::Url::parse(&target_url) {
             let origin = format!("{}://{}", parsed_target.scheme(), parsed_target.host_str().unwrap_or(""));
-            req_builder = req_builder.header("Origin", origin);
+            if req_method != reqwest::Method::GET && req_method != reqwest::Method::HEAD {
+                req_builder = req_builder.header("Origin", origin);
+            }
             req_builder = req_builder.header("Referer", &target_url);
         }
 
@@ -478,17 +506,23 @@ pub fn run() {
                     continue;
                 }
                 
+                // Sanitize Set-Cookie headers so browser stores them under qanprism.localhost
+                if k_lower == "set-cookie" {
+                    if let Ok(cookie_val) = v.to_str() {
+                        let sanitized = sanitize_set_cookie(cookie_val);
+                        builder = builder.header(k.as_str(), sanitized);
+                        continue;
+                    }
+                }
+
                 // Rewrite Location headers to keep redirects inside the proxy!
                 if k_lower == "location" {
                     if let Ok(loc_str) = v.to_str() {
-                        let mut next_url = loc_str.to_string();
-                        if loc_str.starts_with('/') {
-                            if let Ok(parsed_target) = reqwest::Url::parse(&target_url) {
-                                let mut absolute_loc = parsed_target.clone();
-                                absolute_loc.set_path(loc_str);
-                                next_url = absolute_loc.to_string();
-                            }
-                        }
+                        let next_url = if let Ok(parsed_target) = reqwest::Url::parse(&target_url) {
+                            parsed_target.join(loc_str).map(|u| u.to_string()).unwrap_or_else(|_| loc_str.to_string())
+                        } else {
+                            loc_str.to_string()
+                        };
                         // Encode the target URL and point it back to qanprism.localhost
                         let encoded_loc = urlencoding::encode(&next_url);
                         builder = builder.header(k.as_str(), format!("/{}", encoded_loc));
@@ -502,33 +536,12 @@ pub fn run() {
 
             let bytes = response.bytes().unwrap_or_default().to_vec();
             
-            // Check if this is an HTML response — if so, rewrite URLs to keep navigation inside our proxy
+            // Check if this is an HTML response — if so, inject the navigation interceptor
             let content_type = builder_content_type.clone();
             let final_body = if content_type.contains("text/html") {
                 if let Ok(mut html) = String::from_utf8(bytes.clone()) {
-                    // Rewrite absolute URLs for LinkedIn and its CDN domains to route through our proxy
-                    let domains_to_rewrite = vec![
-                        "https://www.linkedin.com",
-                        "https://static.licdn.com",
-                        "https://static-exp1.licdn.com",
-                        "https://static-exp2.licdn.com",
-                        "https://media.licdn.com",
-                        "https://platform.linkedin.com",
-                        "https://www.google.com",
-                        "https://accounts.google.com",
-                    ];
-                    
-                    for domain in &domains_to_rewrite {
-                        let encoded = urlencoding::encode(domain);
-                        // Rewrite href="https://..." and src="https://..." etc
-                        let proxy_url = format!("http://qanprism.localhost/{}", encoded);
-                        html = html.replace(domain, &proxy_url);
-                    }
-                    
-                    // Inject our navigation interceptor script right after <head>
                     let interceptor = r#"<script data-qp-injected="true">
 (function() {
-  // Rewrite any URL to go through our proxy
   function proxyUrl(url) {
     if (!url || typeof url !== 'string') return url;
     var s = url.trim();
@@ -541,38 +554,40 @@ pub fn run() {
 
   // Intercept fetch()
   var origFetch = window.fetch;
-  window.fetch = function(input, init) {
-    if (typeof input === 'string') {
-      input = proxyUrl(input);
-    } else if (input && input.url) {
-      input = new Request(proxyUrl(input.url), input);
-    }
-    return origFetch.call(this, input, init);
-  };
+  if (origFetch) {
+    window.fetch = function(input, init) {
+      if (typeof input === 'string') {
+        input = proxyUrl(input);
+      } else if (input && input.url) {
+        input = new Request(proxyUrl(input.url), input);
+      }
+      return origFetch.call(this, input, init);
+    };
+  }
 
   // Intercept XMLHttpRequest.open
   var origOpen = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function(method, url) {
-    arguments[1] = proxyUrl(url);
-    return origOpen.apply(this, arguments);
-  };
+  if (origOpen) {
+    XMLHttpRequest.prototype.open = function(method, url) {
+      try {
+        arguments[1] = proxyUrl(url);
+      } catch(e) {}
+      return origOpen.apply(this, arguments);
+    };
+  }
 
-  // Intercept window.location assignments
-  var locationProxy = new Proxy(window.location, {
-    set: function(target, prop, value) {
-      if (prop === 'href') {
-        target.href = proxyUrl(value);
-        return true;
-      }
-      target[prop] = value;
-      return true;
-    }
-  });
+  // Intercept window.open
+  var origWindowOpen = window.open;
+  if (origWindowOpen) {
+    window.open = function(url, target, features) {
+      return origWindowOpen.call(window, proxyUrl(url), target, features);
+    };
+  }
 
   // Intercept link clicks
   document.addEventListener('click', function(e) {
-    var a = e.target.closest('a');
-    if (a && a.href && !a.href.startsWith('http://qanprism.localhost/') && !a.href.startsWith('javascript:')) {
+    var a = e.target && e.target.closest ? e.target.closest('a') : null;
+    if (a && a.href && !a.href.startsWith('http://qanprism.localhost/') && !a.href.startsWith('javascript:') && !a.href.startsWith('#')) {
       e.preventDefault();
       window.location.href = proxyUrl(a.href);
     }
