@@ -15,6 +15,9 @@ fn get_proxy_client() -> &'static reqwest::blocking::Client {
             .cookie_store(true)
             .redirect(reqwest::redirect::Policy::none())
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+            .tcp_nodelay(true)
+            .pool_max_idle_per_host(50)
+            .pool_idle_timeout(Some(std::time::Duration::from_secs(90)))
             .build()
             .unwrap()
     })
@@ -175,7 +178,7 @@ fn clear_debug_logs() -> Result<(), String> {
         buffer.clear();
     }
     let _ = std::fs::remove_file("qanprism_debug.log");
-    internal_log("INFO", "System", "Debug logs cleared by user", None);
+    internal_log("INFO", "Diagnostics", "Debug logs buffer cleared by user", None);
     Ok(())
 }
 
@@ -185,58 +188,41 @@ fn fetch_page_context(url: String) -> Result<PageResponse, String> {
     internal_log("NETWORK", "Fetch", &format!("Initiating request -> {}", url), None);
 
     let client = get_client();
+    let mut req = client.get(&url);
 
-    let response_result = client.get(&url)
-        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
-        .header("Accept-Language", "en-US,en;q=0.9,vi;q=0.8")
-        .header("Sec-Fetch-Dest", "document")
-        .header("Sec-Fetch-Mode", "navigate")
-        .header("Sec-Fetch-Site", "none")
-        .header("Sec-Fetch-User", "?1")
-        .header("Upgrade-Insecure-Requests", "1")
-        .send();
+    let stored_cookies = get_cookies_for_url(&url);
+    if !stored_cookies.is_empty() {
+        req = req.header("Cookie", stored_cookies);
+    }
 
-    let response = match response_result {
-        Ok(resp) => resp,
-        Err(err) => {
-            let elapsed = start_time.elapsed().as_millis();
-            let err_msg = format!("HTTP Request failed after {}ms: {}", elapsed, err);
-            internal_log("ERROR", "Fetch", &err_msg, Some(&url));
-            return Err(err_msg);
-        }
-    };
+    let response = req.send().map_err(|e| {
+        let err_msg = format!("Network request failed: {}", e);
+        internal_log("ERROR", "Fetch", &err_msg, Some(&url));
+        err_msg
+    })?;
 
-    let final_url = response.url().to_string();
+    let duration_ms = start_time.elapsed().as_millis();
     let status = response.status().as_u16();
-    let elapsed = start_time.elapsed().as_millis();
+    let final_url = response.url().to_string();
 
     save_response_cookies(&final_url, response.headers());
 
-    let html = match response.text() {
-        Ok(text) => text,
-        Err(err) => {
-            let err_msg = format!("Failed to read response body: {}", err);
-            internal_log("ERROR", "Fetch", &err_msg, Some(&final_url));
-            return Err(err_msg);
-        }
-    };
+    let cookies = get_cookies_for_url(&final_url);
+    let html = response.text().unwrap_or_default();
 
-    let size_kb = (html.len() as f64) / 1024.0;
-    let log_level = if status >= 400 { "WARN" } else { "NETWORK" };
-    let redirect_info = if final_url != url {
-        Some(format!("Redirected from: {}", url))
+    let details_msg = if final_url != url {
+        format!("Redirected from: {}", url)
     } else {
-        None
+        format!("Loaded in {}ms", duration_ms)
     };
 
+    let log_level = if status >= 400 { "ERROR" } else { "NETWORK" };
     internal_log(
         log_level,
         "Fetch",
-        &format!("Status: {} ({}ms, {:.1} KB) -> {}", status, elapsed, size_kb, final_url),
-        redirect_info.as_deref()
+        &format!("Status: {} ({}ms, {:.1} KB) -> {}", status, duration_ms, html.len() as f64 / 1024.0, final_url),
+        Some(&details_msg),
     );
-
-    let cookies = get_cookies_for_url(&final_url);
 
     Ok(PageResponse {
         html,
@@ -249,72 +235,46 @@ fn fetch_page_context(url: String) -> Result<PageResponse, String> {
 #[tauri::command]
 fn submit_form_context(
     url: String,
-    method: String,
     form_data: HashMap<String, String>,
+    method: Option<String>,
 ) -> Result<PageResponse, String> {
     let start_time = Instant::now();
-    internal_log("NETWORK", "FormSubmit", &format!("Submitting {} request to -> {}", method.to_uppercase(), url), None);
+    let http_method = method.unwrap_or_else(|| "POST".to_string()).to_uppercase();
+    internal_log("NETWORK", "FormSubmit", &format!("Submitting form [{}] -> {}", http_method, url), None);
 
     let client = get_client();
-
-    let request_builder = if method.to_uppercase() == "POST" {
-        client.post(&url).form(&form_data)
-    } else {
-        client.get(&url).query(&form_data)
+    let mut req = match http_method.as_str() {
+        "GET" => client.get(&url).query(&form_data),
+        _ => client.post(&url).form(&form_data),
     };
 
-    let response_result = request_builder
-        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
-        .header("Accept-Language", "en-US,en;q=0.9,vi;q=0.8")
-        .header("Sec-Fetch-Dest", "document")
-        .header("Sec-Fetch-Mode", "navigate")
-        .header("Sec-Fetch-Site", "same-origin")
-        .header("Sec-Fetch-User", "?1")
-        .header("Upgrade-Insecure-Requests", "1")
-        .header("Referer", &url)
-        .send();
+    let stored_cookies = get_cookies_for_url(&url);
+    if !stored_cookies.is_empty() {
+        req = req.header("Cookie", stored_cookies);
+    }
 
-    let response = match response_result {
-        Ok(resp) => resp,
-        Err(err) => {
-            let elapsed = start_time.elapsed().as_millis();
-            let err_msg = format!("Form submission failed after {}ms: {}", elapsed, err);
-            internal_log("ERROR", "FormSubmit", &err_msg, Some(&url));
-            return Err(err_msg);
-        }
-    };
+    let response = req.send().map_err(|e| {
+        let err_msg = format!("Form submission failed: {}", e);
+        internal_log("ERROR", "FormSubmit", &err_msg, Some(&url));
+        err_msg
+    })?;
 
-    let final_url = response.url().to_string();
+    let duration_ms = start_time.elapsed().as_millis();
     let status = response.status().as_u16();
-    let elapsed = start_time.elapsed().as_millis();
+    let final_url = response.url().to_string();
 
     save_response_cookies(&final_url, response.headers());
 
-    let html = match response.text() {
-        Ok(text) => text,
-        Err(err) => {
-            let err_msg = format!("Failed to read form response body: {}", err);
-            internal_log("ERROR", "FormSubmit", &err_msg, Some(&final_url));
-            return Err(err_msg);
-        }
-    };
+    let cookies = get_cookies_for_url(&final_url);
+    let html = response.text().unwrap_or_default();
 
-    let size_kb = (html.len() as f64) / 1024.0;
-    let log_level = if status >= 400 { "WARN" } else { "NETWORK" };
-    let redirect_info = if final_url != url {
-        Some(format!("Redirected from: {}", url))
-    } else {
-        None
-    };
-
+    let log_level = if status >= 400 { "ERROR" } else { "NETWORK" };
     internal_log(
         log_level,
         "FormSubmit",
-        &format!("Status: {} ({}ms, {:.1} KB) -> {}", status, elapsed, size_kb, final_url),
-        redirect_info.as_deref()
+        &format!("Status: {} ({}ms, {:.1} KB) -> {}", status, duration_ms, html.len() as f64 / 1024.0, final_url),
+        None,
     );
-
-    let cookies = get_cookies_for_url(&final_url);
 
     Ok(PageResponse {
         html,
@@ -328,22 +288,26 @@ fn submit_form_context(
 fn fetch_api_context(
     url: String,
     method: String,
-    headers: HashMap<String, String>,
+    headers: Option<HashMap<String, String>>,
     body: Option<String>,
 ) -> Result<ApiResponse, String> {
+    let start_time = Instant::now();
+    let http_method = method.to_uppercase();
+    internal_log("NETWORK", "ApiCall", &format!("API Request [{}] -> {}", http_method, url), None);
+
     let client = get_client();
-    let method_upper = method.to_uppercase();
+    let req_method = reqwest::Method::from_bytes(http_method.as_bytes())
+        .map_err(|e| format!("Invalid HTTP method: {}", e))?;
 
-    let mut req = match method_upper.as_str() {
-        "POST" => client.post(&url),
-        "PUT" => client.put(&url),
-        "DELETE" => client.delete(&url),
-        "PATCH" => client.patch(&url),
-        _ => client.get(&url),
-    };
+    let mut req = client.request(req_method, &url);
 
-    for (k, v) in headers {
-        if !k.eq_ignore_ascii_case("host") && !k.eq_ignore_ascii_case("content-length") {
+    let stored_cookies = get_cookies_for_url(&url);
+    if !stored_cookies.is_empty() {
+        req = req.header("Cookie", stored_cookies);
+    }
+
+    if let Some(custom_headers) = headers {
+        for (k, v) in custom_headers {
             req = req.header(k, v);
         }
     }
@@ -352,11 +316,16 @@ fn fetch_api_context(
         req = req.body(b);
     }
 
-    let response = req.send().map_err(|e| e.to_string())?;
+    let response = req.send().map_err(|e| {
+        let err_msg = format!("API Request failed: {}", e);
+        internal_log("ERROR", "ApiCall", &err_msg, Some(&url));
+        err_msg
+    })?;
 
+    let _duration_ms = start_time.elapsed().as_millis();
     let status = response.status().as_u16();
-    let status_text = response.status().canonical_reason().unwrap_or("OK").to_string();
-    
+    let status_text = response.status().canonical_reason().unwrap_or("").to_string();
+
     save_response_cookies(&url, response.headers());
 
     let mut resp_headers = HashMap::new();
@@ -394,7 +363,14 @@ fn sanitize_set_cookie(cookie: &str) -> String {
             new_parts.push("SameSite=Lax");
             continue;
         }
+        if lower.starts_with("path=") {
+            new_parts.push("Path=/");
+            continue;
+        }
         new_parts.push(trimmed);
+    }
+    if !new_parts.iter().any(|p| p.to_lowercase().starts_with("path=")) {
+        new_parts.push("Path=/");
     }
     new_parts.join("; ")
 }
@@ -476,14 +452,14 @@ pub fn run() {
         }
         
         if target_url.is_empty() {
+            internal_log("WARN", "Fetch", &format!("Missing Target URL or Referer for path: {}", path), None);
             return tauri::http::Response::builder()
                 .status(400)
                 .body(b"Bad Request: Missing Target URL or Referer".to_vec())
                 .unwrap();
         }
 
-        println!("Native Proxy Fetching: {}", target_url);
-
+        let start_time = Instant::now();
         let client = get_proxy_client();
 
         let method_str = request.method().as_str();
@@ -519,8 +495,10 @@ pub fn run() {
                 && k_lower != "sec-fetch-dest"
                 && k_lower != "content-length"
             {
-                if let Ok(v_str) = v.to_str() {
-                    req_builder = req_builder.header(k.as_str(), v_str);
+                if let Ok(header_val) = reqwest::header::HeaderValue::from_bytes(v.as_bytes()) {
+                    if let Ok(header_name) = reqwest::header::HeaderName::from_bytes(k.as_str().as_bytes()) {
+                        req_builder = req_builder.header(header_name, header_val);
+                    }
                 }
             }
         }
@@ -541,13 +519,15 @@ pub fn run() {
         // Forward the request body (critical for POST form submissions like login!)
         let body = request.body().to_vec();
         if !body.is_empty() {
-            println!("  -> Forwarding {} bytes of request body", body.len());
             req_builder = req_builder.body(body);
         }
 
         if let Ok(response) = req_builder.send() {
+            let duration_ms = start_time.elapsed().as_millis();
+            let status_code = response.status().as_u16();
+
             let mut builder = tauri::http::Response::builder()
-                .status(response.status().as_u16());
+                .status(status_code);
 
             // Capture content-type for HTML rewriting decision later
             let builder_content_type = response.headers()
@@ -589,6 +569,15 @@ pub fn run() {
             }
 
             let bytes = response.bytes().unwrap_or_default().to_vec();
+            let body_len = bytes.len();
+            let details_msg = format!("{} bytes, {}ms", body_len, duration_ms);
+
+            internal_log(
+                if status_code >= 400 { "WARN" } else { "NETWORK" },
+                "Response",
+                &format!("Status: {} ({}) -> {}", status_code, details_msg, target_url),
+                Some(&details_msg),
+            );
             
             // Check if this is an HTML response — if so, inject the navigation interceptor
             let content_type = builder_content_type.clone();

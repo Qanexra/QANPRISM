@@ -14,11 +14,19 @@ const DebugConsole = ({ isOpen, onClose }) => {
 
   useEffect(() => {
     Logger.fetchLogsFromBackend();
+    const interval = setInterval(() => {
+      if (isOpen) {
+        Logger.fetchLogsFromBackend();
+      }
+    }, 1000);
     const unsubscribe = Logger.subscribe((newLogs) => {
       setLogs([...newLogs]);
     });
-    return unsubscribe;
-  }, []);
+    return () => {
+      clearInterval(interval);
+      unsubscribe();
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (autoScroll && scrollRef.current) {
