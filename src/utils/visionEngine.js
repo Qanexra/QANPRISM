@@ -101,6 +101,72 @@ export const INJECTED_AGENT_BRIDGE_SCRIPT = `
       }
       return originalFetch.apply(this, arguments);
     };
+
+    // Also bridge XMLHttpRequest for SPAs
+    function BridgedXHR() {
+      var _url = '';
+      var _method = 'GET';
+      var _headers = {};
+
+      var self = this;
+      this.readyState = 0;
+      this.status = 0;
+      this.statusText = '';
+      this.responseText = '';
+      this.response = '';
+      this.onreadystatechange = null;
+      this.onload = null;
+      this.onerror = null;
+
+      this.open = function(method, url) {
+        _method = method;
+        _url = url;
+        self.readyState = 1;
+        if (self.onreadystatechange) self.onreadystatechange();
+      };
+
+      this.setRequestHeader = function(header, value) {
+        _headers[header] = value;
+      };
+
+      this.send = function(body) {
+        var absoluteUrl = _url.startsWith('http') ? _url : (document.baseURI ? new URL(_url, document.baseURI).href : _url);
+        var requestId = 'xhr-' + Math.random().toString(36).substring(2) + Date.now();
+
+        function onXhrResponse(event) {
+          if (event.data && event.data.type === 'QANPRISM_API_RESPONSE' && event.data.requestId === requestId) {
+            window.removeEventListener('message', onXhrResponse);
+            if (event.data.error) {
+              if (self.onerror) self.onerror(new Error(event.data.error));
+            } else {
+              self.readyState = 4;
+              self.status = event.data.status || 200;
+              self.statusText = event.data.statusText || 'OK';
+              self.responseText = event.data.body || '';
+              self.response = event.data.body || '';
+              if (self.onreadystatechange) self.onreadystatechange();
+              if (self.onload) self.onload();
+            }
+          }
+        }
+
+        window.addEventListener('message', onXhrResponse);
+
+        window.parent.postMessage({
+          type: 'QANPRISM_API_REQUEST',
+          requestId: requestId,
+          url: absoluteUrl,
+          method: _method,
+          headers: _headers,
+          body: body ? String(body) : null
+        }, '*');
+      };
+
+      this.abort = function() {};
+      this.getResponseHeader = function(name) { return null; };
+      this.getAllResponseHeaders = function() { return ''; };
+    }
+    window.XMLHttpRequest = BridgedXHR;
   }
 
   var elementMap = {};
