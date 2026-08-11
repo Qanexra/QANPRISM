@@ -230,6 +230,32 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       } else if (event.data.type === 'QANPRISM_FORM_SUBMIT') {
         Logger.info('FormSubmit', `Tab [${tab.id}] submitting ${event.data.method} form to -> ${event.data.url}`);
         handleFormSubmit(event.data.url, event.data.method, event.data.formData);
+      } else if (event.data.type === 'QANPRISM_API_REQUEST' && event.data.requestId) {
+        invoke('fetch_api_context', {
+          url: event.data.url,
+          method: event.data.method || 'GET',
+          headers: event.data.headers || {},
+          body: event.data.body || null
+        }).then((apiRes) => {
+          if (iframeRef.current && iframeRef.current.contentWindow) {
+            iframeRef.current.contentWindow.postMessage({
+              type: 'QANPRISM_API_RESPONSE',
+              requestId: event.data.requestId,
+              status: apiRes.status,
+              statusText: apiRes.status_text,
+              headers: apiRes.headers,
+              body: apiRes.body
+            }, '*');
+          }
+        }).catch((apiErr) => {
+          if (iframeRef.current && iframeRef.current.contentWindow) {
+            iframeRef.current.contentWindow.postMessage({
+              type: 'QANPRISM_API_RESPONSE',
+              requestId: event.data.requestId,
+              error: String(apiErr)
+            }, '*');
+          }
+        });
       } else if (event.data.type === 'QANPRISM_LOG') {
         Logger.log(event.data.level || 'INFO', event.data.category || 'InPage', event.data.message || '', event.data.details);
       } else if (event.data.type === 'QP_BRIDGE_READY' && isActive) {

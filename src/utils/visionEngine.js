@@ -8,6 +8,7 @@
  * 4. Search and link navigation interceptor for cross-origin browsing
  * 5. Frame-busting / Clickjacking spoofing so secure login pages run smoothly
  * 6. In-page JavaScript error and diagnostic capture
+ * 7. In-page fetch proxy bridge to bypass iframe CORS blocks for Single Page Apps (LinkedIn, Twitter, etc.)
  */
 
 export const INJECTED_AGENT_BRIDGE_SCRIPT = `
@@ -43,6 +44,64 @@ export const INJECTED_AGENT_BRIDGE_SCRIPT = `
     Object.defineProperty(window, 'parent', { get: function() { return window; }, configurable: true });
     Object.defineProperty(window, 'frameElement', { get: function() { return null; }, configurable: true });
   } catch(e) {}
+
+  // In-page API Proxy Bridge for SPAs (LinkedIn, Twitter, Google, etc.)
+  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    var originalFetch = window.fetch;
+    window.fetch = function(input, init) {
+      var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+      if (url && (url.startsWith('/') || url.startsWith('http'))) {
+        var absoluteUrl = url.startsWith('http') ? url : (document.baseURI ? new URL(url, document.baseURI).href : url);
+        return new Promise(function(resolve, reject) {
+          var requestId = 'req-' + Math.random().toString(36).substring(2) + Date.now();
+
+          function onResponse(event) {
+            if (event.data && event.data.type === 'QANPRISM_API_RESPONSE' && event.data.requestId === requestId) {
+              window.removeEventListener('message', onResponse);
+              if (event.data.error) {
+                reject(new Error(event.data.error));
+              } else {
+                var responseHeaders = new Headers();
+                if (event.data.headers) {
+                  for (var k in event.data.headers) {
+                    responseHeaders.append(k, event.data.headers[k]);
+                  }
+                }
+                var resp = new Response(event.data.body || '', {
+                  status: event.data.status || 200,
+                  statusText: event.data.statusText || 'OK',
+                  headers: responseHeaders
+                });
+                resolve(resp);
+              }
+            }
+          }
+
+          window.addEventListener('message', onResponse);
+
+          var method = (init && init.method) ? init.method : 'GET';
+          var reqHeaders = {};
+          if (init && init.headers) {
+            if (init.headers instanceof Headers) {
+              init.headers.forEach(function(val, key) { reqHeaders[key] = val; });
+            } else if (typeof init.headers === 'object') {
+              reqHeaders = init.headers;
+            }
+          }
+
+          window.parent.postMessage({
+            type: 'QANPRISM_API_REQUEST',
+            requestId: requestId,
+            url: absoluteUrl,
+            method: method,
+            headers: reqHeaders,
+            body: (init && init.body) ? String(init.body) : null
+          }, '*');
+        });
+      }
+      return originalFetch.apply(this, arguments);
+    };
+  }
 
   var elementMap = {};
   var overlayContainer = null;

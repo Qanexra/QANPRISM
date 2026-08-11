@@ -13,11 +13,19 @@ pub struct PageResponse {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ApiResponse {
+    pub status: u16,
+    pub status_text: String,
+    pub body: String,
+    pub headers: HashMap<String, String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LogEntry {
     pub id: String,
     pub timestamp: String,
     pub level: String,     // INFO, WARN, ERROR, NETWORK, AGENT
-    pub category: String,  // Fetch, Navigation, Script, DOM, Agent
+    pub category: String,  // Fetch, Navigation, Script, DOM, Agent, API
     pub message: String,
     pub details: Option<String>,
 }
@@ -238,12 +246,63 @@ fn submit_form_context(
     })
 }
 
+#[tauri::command]
+fn fetch_api_context(
+    url: String,
+    method: String,
+    headers: HashMap<String, String>,
+    body: Option<String>,
+) -> Result<ApiResponse, String> {
+    let client = get_client();
+    let method_upper = method.to_uppercase();
+
+    let mut req = match method_upper.as_str() {
+        "POST" => client.post(&url),
+        "PUT" => client.put(&url),
+        "DELETE" => client.delete(&url),
+        "PATCH" => client.patch(&url),
+        _ => client.get(&url),
+    };
+
+    for (k, v) in headers {
+        if !k.eq_ignore_ascii_case("host") && !k.eq_ignore_ascii_case("content-length") {
+            req = req.header(k, v);
+        }
+    }
+
+    if let Some(b) = body {
+        req = req.body(b);
+    }
+
+    let response = req.send().map_err(|e| e.to_string())?;
+
+    let status = response.status().as_u16();
+    let status_text = response.status().canonical_reason().unwrap_or("OK").to_string();
+    
+    let mut resp_headers = HashMap::new();
+    for (k, v) in response.headers() {
+        if let Ok(val_str) = v.to_str() {
+            resp_headers.insert(k.as_str().to_string(), val_str.to_string());
+        }
+    }
+
+    let body_text = response.text().unwrap_or_default();
+
+    Ok(ApiResponse {
+        status,
+        status_text,
+        body: body_text,
+        headers: resp_headers,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
     .invoke_handler(tauri::generate_handler![
         fetch_page_context,
         submit_form_context,
+        fetch_api_context,
         log_event,
         get_debug_logs,
         clear_debug_logs
