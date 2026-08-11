@@ -564,27 +564,37 @@ pub fn run() {
             let content_type = builder_content_type.clone();
             let final_body = if content_type.contains("text/html") {
                 if let Ok(mut html) = String::from_utf8(bytes.clone()) {
-                    let interceptor = r#"<script data-qp-injected="true">
+                    let interceptor_template = r#"<script data-qp-injected="true">
 (function() {
+  var currentTarget = "TARGET_URL_PLACEHOLDER";
+  
   function proxyUrl(url) {
     if (!url || typeof url !== 'string') return url;
     var s = url.trim();
     if (s.startsWith('http://qanprism.localhost/')) return s;
-    if (s.startsWith('https://') || s.startsWith('http://')) {
-      return 'http://qanprism.localhost/' + encodeURIComponent(s);
+    if (s.startsWith('javascript:') || s.startsWith('data:') || s.startsWith('blob:') || s.startsWith('#')) return url;
+    try {
+      var absolute = new URL(s, currentTarget).href;
+      return 'http://qanprism.localhost/' + encodeURIComponent(absolute);
+    } catch(e) {
+      if (s.startsWith('https://') || s.startsWith('http://')) {
+        return 'http://qanprism.localhost/' + encodeURIComponent(s);
+      }
+      return url;
     }
-    return url;
   }
 
   // Intercept fetch()
   var origFetch = window.fetch;
   if (origFetch) {
     window.fetch = function(input, init) {
-      if (typeof input === 'string') {
-        input = proxyUrl(input);
-      } else if (input && input.url) {
-        input = new Request(proxyUrl(input.url), input);
-      }
+      try {
+        if (typeof input === 'string') {
+          input = proxyUrl(input);
+        } else if (input && input.url) {
+          input = new Request(proxyUrl(input.url), input);
+        }
+      } catch(e) {}
       return origFetch.call(this, input, init);
     };
   }
@@ -611,32 +621,53 @@ pub fn run() {
   // Intercept link clicks
   document.addEventListener('click', function(e) {
     var a = e.target && e.target.closest ? e.target.closest('a') : null;
-    if (a && a.href && !a.href.startsWith('http://qanprism.localhost/') && !a.href.startsWith('javascript:') && !a.href.startsWith('#')) {
-      e.preventDefault();
-      window.location.href = proxyUrl(a.href);
+    if (a) {
+      var rawHref = a.getAttribute('href');
+      if (rawHref && !rawHref.startsWith('javascript:') && !rawHref.startsWith('#')) {
+        var proxied = proxyUrl(rawHref);
+        if (proxied && !proxied.startsWith('javascript:')) {
+          e.preventDefault();
+          window.location.href = proxied;
+        }
+      }
     }
   }, true);
 
-  // Intercept form submissions
+  // Intercept form submissions via event
   document.addEventListener('submit', function(e) {
     var form = e.target;
-    if (form && form.action && !form.action.startsWith('http://qanprism.localhost/')) {
-      form.action = proxyUrl(form.action);
+    if (form) {
+      var rawAction = form.getAttribute('action') || currentTarget;
+      form.action = proxyUrl(rawAction);
     }
   }, true);
+
+  // Intercept programmatic form.submit() calls
+  if (window.HTMLFormElement && HTMLFormElement.prototype) {
+    var origFormSubmit = HTMLFormElement.prototype.submit;
+    HTMLFormElement.prototype.submit = function() {
+      try {
+        var rawAction = this.getAttribute('action') || currentTarget;
+        this.action = proxyUrl(rawAction);
+      } catch(e) {}
+      return origFormSubmit.call(this);
+    };
+  }
 })();
 </script>"#;
                     
+                    let interceptor = interceptor_template.replace("TARGET_URL_PLACEHOLDER", &target_url);
+
                     // Insert after <head> or at the very start
                     if let Some(pos) = html.find("<head>") {
-                        html.insert_str(pos + 6, interceptor);
+                        html.insert_str(pos + 6, &interceptor);
                     } else if let Some(pos) = html.find("<head ") {
                         // Find the closing > of <head ...>
                         if let Some(end) = html[pos..].find('>') {
-                            html.insert_str(pos + end + 1, interceptor);
+                            html.insert_str(pos + end + 1, &interceptor);
                         }
                     } else if let Some(pos) = html.find("<HEAD>") {
-                        html.insert_str(pos + 6, interceptor);
+                        html.insert_str(pos + 6, &interceptor);
                     } else {
                         // Prepend it
                         html = format!("{}{}", interceptor, html);

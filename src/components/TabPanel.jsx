@@ -57,8 +57,8 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
   };
 
   useEffect(() => {
-    // Legacy bounds updating removed for iframe native architecture
-  }, []);
+    setUrlInput(tab.url);
+  }, [tab.url]);
 
   const navigateTo = (newUrl) => {
     const finalUrl = getFinalUrl(newUrl);
