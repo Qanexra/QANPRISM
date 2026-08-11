@@ -453,6 +453,13 @@ pub fn run() {
             req_builder = req_builder.header("Referer", &target_url);
         }
 
+        // Forward the request body (critical for POST form submissions like login!)
+        let body = request.body().to_vec();
+        if !body.is_empty() {
+            println!("  -> Forwarding {} bytes of request body", body.len());
+            req_builder = req_builder.body(body);
+        }
+
         if let Ok(response) = req_builder.send() {
             let mut builder = tauri::http::Response::builder()
                 .status(response.status().as_u16());
