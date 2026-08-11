@@ -75,29 +75,18 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
     if (!rawHtml || typeof rawHtml !== 'string') return '';
 
     const baseTag = `<base href="${resolvedUrl}" target="_self">`;
+    const scriptPayload = `<script>${INJECTED_AGENT_BRIDGE_SCRIPT}</script>`;
+
     let processed = rawHtml;
 
-    // Inject base href cleanly if not present
-    if (!processed.includes('<base ')) {
-      if (processed.includes('<head>')) {
-        processed = processed.replace('<head>', `<head>${baseTag}`);
-      } else if (processed.includes('<head ')) {
-        processed = processed.replace(/(<head[^>]*>)/i, `$1${baseTag}`);
-      } else if (processed.includes('<html')) {
-        processed = processed.replace(/(<html[^>]*>)/i, `$1<head>${baseTag}</head>`);
-      } else {
-        processed = baseTag + processed;
-      }
-    }
-
-    // Inject Bridge Script at the very end of body to prevent React 18/SSR Hydration mismatch error #418
-    const scriptPayload = `<script>${INJECTED_AGENT_BRIDGE_SCRIPT}</script>`;
-    if (processed.includes('</body>')) {
-      processed = processed.replace('</body>', `${scriptPayload}</body>`);
-    } else if (processed.includes('</html>')) {
-      processed = processed.replace('</html>', `${scriptPayload}</html>`);
+    if (processed.includes('<head>')) {
+      processed = processed.replace('<head>', `<head>${baseTag}${scriptPayload}`);
+    } else if (processed.includes('<head ')) {
+      processed = processed.replace(/(<head[^>]*>)/i, `$1${baseTag}${scriptPayload}`);
+    } else if (processed.includes('<html')) {
+      processed = processed.replace(/(<html[^>]*>)/i, `$1<head>${baseTag}${scriptPayload}</head>`);
     } else {
-      processed = processed + scriptPayload;
+      processed = `${baseTag}${scriptPayload}` + processed;
     }
 
     return processed;
