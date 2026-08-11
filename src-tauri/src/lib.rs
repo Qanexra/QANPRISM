@@ -362,102 +362,129 @@ fn fetch_api_context(
     })
 }
 
-#[tauri::command]
-fn create_or_update_tab_webview(
-    app: AppHandle,
-    tab_id: String,
-    url: String,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-    visible: bool,
-) -> Result<(), String> {
-    println!("create_or_update_tab_webview: tab={} url={} x={} y={} w={} h={} visible={}", tab_id, url, x, y, width, height, visible);
-    
-    let app_handle = app.clone();
-    
-    let _ = app.run_on_main_thread(move || {
-        if let Some(window) = app_handle.get_window("main") {
-            if let Some(existing) = app_handle.get_webview(&tab_id) {
-                let _ = existing.set_position(LogicalPosition::new(x, y));
-                let _ = existing.set_size(LogicalSize::new(width, height));
-                if visible {
-                    let _ = existing.show();
-                    let _ = existing.set_focus();
-                    if let Ok(current_url) = existing.url() {
-                        if current_url.as_str() != url && !url.is_empty() {
-                            if let Ok(parsed) = url.parse() {
-                                let _ = existing.navigate(parsed);
-                            }
-                        }
-                    }
-                } else {
-                    let _ = existing.hide();
-                }
-            } else {
-                if !url.is_empty() {
-                    if let Ok(parsed) = url.parse() {
-                        let builder = WebviewBuilder::new(&tab_id, WebviewUrl::External(parsed))
-                            .auto_resize();
-
-                        match window.add_child(
-                            builder,
-                            LogicalPosition::new(x, y),
-                            LogicalSize::new(width, height),
-                        ) {
-                            Ok(wv) => {
-                                if visible {
-                                    let _ = wv.show();
-                                    let _ = wv.set_focus();
-                                } else {
-                                    let _ = wv.hide();
-                                }
-                            },
-                            Err(e) => {
-                                eprintln!("Failed to add child webview for tab {}: {:?}", tab_id, e);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    Ok(())
-}
-
-#[tauri::command]
-fn navigate_tab_webview(app: AppHandle, tab_id: String, url: String) -> Result<(), String> {
-    let app_handle = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        if let Some(existing) = app_handle.get_webview(&tab_id) {
-            if let Ok(parsed) = url.parse() {
-                let _ = existing.navigate(parsed);
-            }
-        }
-    });
-    Ok(())
-}
-
-#[tauri::command]
-fn close_tab_webview(app: AppHandle, tab_id: String) -> Result<(), String> {
-    let app_handle = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        if let Some(existing) = app_handle.get_webview(&tab_id) {
-            let _ = existing.close();
-        }
-    });
-    Ok(())
-}
+// Legacy webview commands removed as architecture has migrated to qanprism:// protocol
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    .register_uri_scheme_protocol("qanprism", move |_app, request| {
+        let uri = request.uri().to_string();
+        let path = request.uri().path().strip_prefix('/').unwrap_or(request.uri().path());
+        
+        let mut target_url = String::new();
+        
+        // Check if path is URL-encoded full URL
+        if path.starts_with("http%3A") || path.starts_with("https%3A") {
+            // It's the root iframe request
+            if let Ok(decoded) = urlencoding::decode(path) {
+                target_url = decoded.into_owned();
+            }
+        } else {
+            // It's a relative request, check Referer
+            let mut referer_str = String::new();
+            if let Some(r) = request.headers().get("referer") {
+                if let Ok(r_str) = r.to_str() {
+                    referer_str = r_str.to_string();
+                }
+            }
+            
+            if !referer_str.is_empty() {
+                if let Ok(ref_url) = reqwest::Url::parse(&referer_str) {
+                    let ref_path = ref_url.path().strip_prefix('/').unwrap_or("");
+                    if ref_path.starts_with("http%3A") || ref_path.starts_with("https%3A") {
+                        if let Ok(decoded_ref) = urlencoding::decode(ref_path) {
+                            if let Ok(base_url) = reqwest::Url::parse(&decoded_ref) {
+                                // Reconstruct the full URL
+                                let mut final_url = base_url.clone();
+                                final_url.set_path(path);
+                                if let Some(query) = request.uri().query() {
+                                    final_url.set_query(Some(query));
+                                }
+                                target_url = final_url.to_string();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if target_url.is_empty() {
+            return tauri::http::Response::builder()
+                .status(400)
+                .body(b"Bad Request: Missing Target URL or Referer".to_vec())
+                .unwrap();
+        }
+
+        println!("Native Proxy Fetching: {}", target_url);
+
+        let client = reqwest::blocking::Client::builder()
+            .redirect(reqwest::redirect::Policy::none()) // We must handle redirects manually to rewrite Location headers!
+            .build()
+            .unwrap();
+
+        let method_str = request.method().as_str();
+        let req_method = reqwest::Method::from_bytes(method_str.as_bytes()).unwrap_or(reqwest::Method::GET);
+        let mut req_builder = client.request(req_method, &target_url);
+
+        // Forward headers safely
+        for (k, v) in request.headers() {
+            let k_lower = k.as_str().to_lowercase();
+            if k_lower != "host" && k_lower != "origin" && k_lower != "referer" && k_lower != "sec-fetch-site" {
+                if let Ok(v_str) = v.to_str() {
+                    req_builder = req_builder.header(k.as_str(), v_str);
+                }
+            }
+        }
+
+        // Add proper origin and referer for the target site to prevent CSRF blocks
+        if let Ok(parsed_target) = reqwest::Url::parse(&target_url) {
+            let origin = format!("{}://{}", parsed_target.scheme(), parsed_target.host_str().unwrap_or(""));
+            req_builder = req_builder.header("Origin", origin);
+            req_builder = req_builder.header("Referer", &target_url);
+        }
+
+        if let Ok(response) = req_builder.send() {
+            let mut builder = tauri::http::Response::builder()
+                .status(response.status().as_u16());
+
+            for (k, v) in response.headers() {
+                let k_lower = k.as_str().to_lowercase();
+                // Strip CORS blocks
+                if k_lower == "x-frame-options" || k_lower == "content-security-policy" || k_lower == "content-security-policy-report-only" || k_lower == "cross-origin-opener-policy" {
+                    continue;
+                }
+                
+                // Rewrite Location headers to keep redirects inside the proxy!
+                if k_lower == "location" {
+                    if let Ok(loc_str) = v.to_str() {
+                        let mut next_url = loc_str.to_string();
+                        if loc_str.starts_with('/') {
+                            if let Ok(parsed_target) = reqwest::Url::parse(&target_url) {
+                                let mut absolute_loc = parsed_target.clone();
+                                absolute_loc.set_path(loc_str);
+                                next_url = absolute_loc.to_string();
+                            }
+                        }
+                        // Encode the target URL and point it back to qanprism.localhost
+                        let encoded_loc = urlencoding::encode(&next_url);
+                        builder = builder.header(k.as_str(), format!("/{}", encoded_loc));
+                        continue;
+                    }
+                }
+                if let Ok(v_str) = v.to_str() {
+                    builder = builder.header(k.as_str(), v_str);
+                }
+            }
+
+            let bytes = response.bytes().unwrap_or_default().to_vec();
+            builder.body(bytes).unwrap_or_else(|_| {
+                tauri::http::Response::builder().status(500).body(b"Internal Error".to_vec()).unwrap()
+            })
+        } else {
+            tauri::http::Response::builder().status(502).body(b"Bad Gateway".to_vec()).unwrap()
+        }
+    })
     .invoke_handler(tauri::generate_handler![
-        create_or_update_tab_webview,
-        navigate_tab_webview,
-        close_tab_webview,
         fetch_page_context,
         submit_form_context,
         fetch_api_context,

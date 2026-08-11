@@ -56,48 +56,31 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
     return finalUrl;
   };
 
-  // Synchronize native child webview bounds and visibility with the container
-  const updateWebviewBounds = useCallback(() => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      const finalUrl = getFinalUrl(tab.url);
-      invoke('create_or_update_tab_webview', {
-        tabId: tab.id,
-        url: finalUrl,
-        x: Math.round(rect.left),
-        y: Math.round(rect.top),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
-        visible: isActive
-      }).catch(err => {
-        console.warn("create_or_update_tab_webview error:", err);
-      });
-    }
-  }, [tab.id, tab.url, isActive]);
-
   useEffect(() => {
-    updateWebviewBounds();
-
-    const handleResize = () => {
-      updateWebviewBounds();
-    };
-
-    window.addEventListener('resize', handleResize);
-    const observer = new ResizeObserver(handleResize);
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      observer.disconnect();
-    };
-  }, [updateWebviewBounds]);
+    // Legacy bounds updating removed for iframe native architecture
+  }, []);
 
   const navigateTo = (newUrl) => {
     const finalUrl = getFinalUrl(newUrl);
     setUrlInput(finalUrl);
+    
+    // Check if we need to inject the bridge script for newly navigated URLs
+    if (finalUrl !== tab.url) {
+      if (containerRef.current && containerRef.current.contentWindow) {
+        containerRef.current.contentWindow.postMessage({ type: 'QP_INJECT_BRIDGE' }, '*');
+      }
+    }
+    
+    onUpdateUrl(tab.id, finalUrl);
+    
+    // Add to history if it's a new navigation
+    if (finalUrl !== history[historyIndex]) {
+      const newHistory = history.slice(0, historyIndex + 1);
+      newHistory.push(finalUrl);
+      setHistory(newHistory);
+      setHistoryIndex(newHistory.length - 1);
+    }
+  };
     if (finalUrl !== tab.url) {
       onUpdateUrl(finalUrl);
     }
@@ -170,45 +153,53 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
           <ArrowRight size={16} />
         </button>
         <button onClick={reload} title="Reload">
-          <RefreshCw size={16} className={isLoading ? "spinning" : ""} />
+          <RefreshCw size={16} />
         </button>
-        
-        <form onSubmit={handleNavigate} style={{ display: 'flex', flex: 1, alignItems: 'center', position: 'relative' }}>
-          <ShieldCheck size={14} color="#10b981" style={{ position: 'absolute', left: 12 }} />
-          <input 
-            type="text" 
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            style={{ paddingLeft: 36, paddingRight: 36 }}
-            placeholder="Search or enter web address"
-          />
-        </form>
-
-        {/* Vision Marks Toggle Button */}
+        <div className="url-input-wrapper">
+          <ShieldCheck size={16} className="security-icon" />
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            navigateTo(urlInput);
+          }} style={{ width: '100%' }}>
+            <input
+              type="text"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              className="url-input"
+              onFocus={(e) => e.target.select()}
+            />
+          </form>
+        </div>
         <button 
-          onClick={toggleVisionMarks}
-          style={{ 
-            color: showVisionOverlay ? 'var(--accent-color, #3b82f6)' : 'var(--text-secondary, #94a3b8)',
-            marginLeft: '4px'
-          }}
-          title={showVisionOverlay ? "Hide AI Vision Markers" : "Show AI Vision Markers (#IDs)"}
+          onClick={toggleVisionMarks} 
+          title="Toggle AI Vision"
+          className={showVisionOverlay ? 'active' : ''}
         >
-          {showVisionOverlay ? <Eye size={16} /> : <EyeOff size={16} />}
+          {showVisionOverlay ? <EyeOff size={16} /> : <Eye size={16} />}
         </button>
       </div>
-
-      {/* Native Webview Viewport Host Element */}
-      <div 
-        ref={containerRef} 
-        className="webview-viewport-host" 
-        style={{ 
-          flex: 1, 
-          position: 'relative', 
-          width: '100%', 
-          height: '100%', 
-          backgroundColor: '#0f172a' 
-        }} 
-      />
+      
+      {/* 
+        Native Iframe Architecture (QanPrism Protocol)
+        This replaces the buggy Windows Native Webview Z-ordering with a rock solid
+        React-native iframe that proxies natively through Rust.
+      */}
+      <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%', backgroundColor: '#fff' }}>
+        <iframe
+          ref={containerRef}
+          src={`http://qanprism.localhost/${encodeURIComponent(tab.url || 'https://www.google.com')}`}
+          style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
+          title={`Tab ${tab.id}`}
+        />
+        
+        {/* Loading Overlay */}
+        {isLoading && (
+          <div className="tab-loading-overlay">
+            <div className="spinner"></div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
