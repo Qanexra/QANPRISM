@@ -4,7 +4,21 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
-// Tauri types used by the qanprism:// protocol proxy
+
+
+// Shared persistent HTTP client with cookie jar for the qanprism:// proxy
+static PROXY_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+
+fn get_proxy_client() -> &'static reqwest::blocking::Client {
+    PROXY_CLIENT.get_or_init(|| {
+        reqwest::blocking::Client::builder()
+            .cookie_store(true)
+            .redirect(reqwest::redirect::Policy::none())
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+            .build()
+            .unwrap()
+    })
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PageResponse {
@@ -416,10 +430,7 @@ pub fn run() {
 
         println!("Native Proxy Fetching: {}", target_url);
 
-        let client = reqwest::blocking::Client::builder()
-            .redirect(reqwest::redirect::Policy::none()) // We must handle redirects manually to rewrite Location headers!
-            .build()
-            .unwrap();
+        let client = get_proxy_client();
 
         let method_str = request.method().as_str();
         let req_method = reqwest::Method::from_bytes(method_str.as_bytes()).unwrap_or(reqwest::Method::GET);

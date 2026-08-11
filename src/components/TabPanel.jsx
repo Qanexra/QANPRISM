@@ -172,7 +172,6 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
           ref={containerRef}
           src={`http://qanprism.localhost/${encodeURIComponent(tab.url || 'https://www.google.com')}`}
           style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
           title={`Tab ${tab.id}`}
         />
         
