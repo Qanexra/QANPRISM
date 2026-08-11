@@ -408,7 +408,8 @@ pub fn run() {
         let mut target_url = String::new();
         
         // Check if path is URL-encoded full URL
-        if path.starts_with("http%3A") || path.starts_with("https%3A") {
+        let path_lower = path.to_lowercase();
+        if path_lower.starts_with("http%3a") || path_lower.starts_with("https%3a") {
             // It's the root iframe request
             if let Ok(decoded) = urlencoding::decode(path) {
                 target_url = decoded.into_owned();
@@ -416,6 +417,26 @@ pub fn run() {
                     if !target_url.contains('?') {
                         target_url = format!("{}?{}", target_url, query);
                     }
+                }
+            }
+        } else if path_lower.starts_with("http://") || path_lower.starts_with("https://") {
+            target_url = path.to_string();
+            if let Some(query) = request.uri().query() {
+                if !target_url.contains('?') {
+                    target_url = format!("{}?{}", target_url, query);
+                }
+            }
+        } else if path_lower.starts_with("http:/") || path_lower.starts_with("https:/") {
+            // Handle collapsed slashes
+            let fixed = if path_lower.starts_with("https:/") {
+                format!("https://{}", &path[7..])
+            } else {
+                format!("http://{}", &path[6..])
+            };
+            target_url = fixed;
+            if let Some(query) = request.uri().query() {
+                if !target_url.contains('?') {
+                    target_url = format!("{}?{}", target_url, query);
                 }
             }
         } else {
@@ -430,7 +451,8 @@ pub fn run() {
             if !referer_str.is_empty() {
                 if let Ok(ref_url) = reqwest::Url::parse(&referer_str) {
                     let ref_path = ref_url.path().strip_prefix('/').unwrap_or("");
-                    if ref_path.starts_with("http%3A") || ref_path.starts_with("https%3A") {
+                    let ref_path_lower = ref_path.to_lowercase();
+                    if ref_path_lower.starts_with("http%3a") || ref_path_lower.starts_with("https%3a") {
                         if let Ok(decoded_ref) = urlencoding::decode(ref_path) {
                             if let Ok(base_url) = reqwest::Url::parse(&decoded_ref) {
                                 if let Ok(resolved) = base_url.join(&format!("/{}", path)) {
@@ -440,6 +462,12 @@ pub fn run() {
                                     }
                                     target_url = final_url.to_string();
                                 }
+                            }
+                        }
+                    } else if referer_str.starts_with("http://") || referer_str.starts_with("https://") {
+                        if let Ok(base_url) = reqwest::Url::parse(&referer_str) {
+                            if let Ok(resolved) = base_url.join(&format!("/{}", path)) {
+                                target_url = resolved.to_string();
                             }
                         }
                     }
@@ -467,7 +495,8 @@ pub fn run() {
             if let Ok(r_str) = r.to_str() {
                 if let Ok(ref_url) = reqwest::Url::parse(r_str) {
                     let ref_path = ref_url.path().strip_prefix('/').unwrap_or("");
-                    if ref_path.starts_with("http%3A") || ref_path.starts_with("https%3A") {
+                    let ref_path_lower = ref_path.to_lowercase();
+                    if ref_path_lower.starts_with("http%3a") || ref_path_lower.starts_with("https%3a") {
                         if let Ok(decoded_ref) = urlencoding::decode(ref_path) {
                             incoming_referer_url = decoded_ref.into_owned();
                         }
@@ -478,12 +507,13 @@ pub fn run() {
             }
         }
 
-        // Forward headers safely
+        // Forward headers safely (exclude cookie, host, origin, referer so reqwest handles cookie_store cleanly per-domain)
         for (k, v) in request.headers() {
             let k_lower = k.as_str().to_lowercase();
             if k_lower != "host" 
                 && k_lower != "origin" 
                 && k_lower != "referer" 
+                && k_lower != "cookie"
                 && k_lower != "sec-fetch-site" 
                 && k_lower != "sec-fetch-mode" 
                 && k_lower != "sec-fetch-dest"
