@@ -61,6 +61,12 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       }
       return 'https://' + finalUrl;
     }
+
+    // Map LinkedIn SPA login endpoint to canonical server-rendered login portal
+    if (finalUrl.includes('linkedin.com/login') || finalUrl.includes('linkedin.com/uas/login')) {
+      return 'https://www.linkedin.com/checkpoint/lg/login';
+    }
+
     return finalUrl;
   };
 
