@@ -71,6 +71,38 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
     return finalUrl;
   };
 
+  const prepareHtmlPayload = (rawHtml, resolvedUrl) => {
+    if (!rawHtml || typeof rawHtml !== 'string') return '';
+
+    const baseTag = `<base href="${resolvedUrl}" target="_self">`;
+    let processed = rawHtml;
+
+    // Inject base href cleanly if not present
+    if (!processed.includes('<base ')) {
+      if (processed.includes('<head>')) {
+        processed = processed.replace('<head>', `<head>${baseTag}`);
+      } else if (processed.includes('<head ')) {
+        processed = processed.replace(/(<head[^>]*>)/i, `$1${baseTag}`);
+      } else if (processed.includes('<html')) {
+        processed = processed.replace(/(<html[^>]*>)/i, `$1<head>${baseTag}</head>`);
+      } else {
+        processed = baseTag + processed;
+      }
+    }
+
+    // Inject Bridge Script at the very end of body to prevent React 18/SSR Hydration mismatch error #418
+    const scriptPayload = `<script>${INJECTED_AGENT_BRIDGE_SCRIPT}</script>`;
+    if (processed.includes('</body>')) {
+      processed = processed.replace('</body>', `${scriptPayload}</body>`);
+    } else if (processed.includes('</html>')) {
+      processed = processed.replace('</html>', `${scriptPayload}</html>`);
+    } else {
+      processed = processed + scriptPayload;
+    }
+
+    return processed;
+  };
+
   const loadUrl = useCallback(async (rawUrl) => {
     const finalUrl = getFinalUrl(rawUrl);
     if (finalUrl === lastLoadedUrlRef.current) return;
@@ -81,7 +113,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       onUpdateUrl(finalUrl);
     }
 
-    // Localhost endpoints (webmail, dev servers) load directly via native iframe for 100% native logins & cookies
+    // Localhost dev servers & internal apps load directly via native iframe
     if (isLocalhostUrl(finalUrl)) {
       setSrcDoc('');
       setFallbackSrc(finalUrl);
@@ -97,14 +129,12 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       const rawHtml = typeof res === 'string' ? res : (res?.html || '');
       const resolvedUrl = (typeof res === 'object' && res?.url) ? res.url : finalUrl;
 
-      // Update address bar if redirected (e.g. linkedin.com -> www.linkedin.com)
       if (resolvedUrl && resolvedUrl !== finalUrl) {
         setUrlInput(resolvedUrl);
         onUpdateUrl(resolvedUrl);
       }
 
       if (rawHtml && typeof rawHtml === 'string' && (rawHtml.includes('<html') || rawHtml.includes('<!DOCTYPE') || rawHtml.includes('<body'))) {
-        // Extract title
         const titleMatch = rawHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
         if (titleMatch && titleMatch[1]) {
           const newTitle = titleMatch[1].trim();
@@ -113,25 +143,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
           }
         }
 
-        // Script to inject for link navigation, form interception, and AI Agent control bridge
-        const scriptPayload = `
-          <script>
-            ${INJECTED_AGENT_BRIDGE_SCRIPT}
-          </script>
-        `;
-
-        // Base tag so relative resources (CSS, JS, images, fonts) resolve to origin domain
-        const baseTag = `<base href="${resolvedUrl}" target="_self">`;
-
-        let processedHtml = rawHtml;
-        if (processedHtml.includes('<head>')) {
-          processedHtml = processedHtml.replace('<head>', `<head>${baseTag}${scriptPayload}`);
-        } else if (processedHtml.includes('<html')) {
-          processedHtml = processedHtml.replace(/(<html[^>]*>)/i, `$1<head>${baseTag}${scriptPayload}</head>`);
-        } else {
-          processedHtml = `${baseTag}${scriptPayload}` + processedHtml;
-        }
-
+        const processedHtml = prepareHtmlPayload(rawHtml, resolvedUrl);
         setFallbackSrc('');
         setSrcDoc(processedHtml);
       } else {
@@ -173,23 +185,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
           }
         }
 
-        const scriptPayload = `
-          <script>
-            ${INJECTED_AGENT_BRIDGE_SCRIPT}
-          </script>
-        `;
-
-        const baseTag = `<base href="${resolvedUrl}" target="_self">`;
-
-        let processedHtml = rawHtml;
-        if (processedHtml.includes('<head>')) {
-          processedHtml = processedHtml.replace('<head>', `<head>${baseTag}${scriptPayload}`);
-        } else if (processedHtml.includes('<html')) {
-          processedHtml = processedHtml.replace(/(<html[^>]*>)/i, `$1<head>${baseTag}${scriptPayload}</head>`);
-        } else {
-          processedHtml = `${baseTag}${scriptPayload}` + processedHtml;
-        }
-
+        const processedHtml = prepareHtmlPayload(rawHtml, resolvedUrl);
         setFallbackSrc('');
         setSrcDoc(processedHtml);
       } else {
