@@ -4,7 +4,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
-use tauri::{AppHandle, Manager, WebviewBuilder, WebviewUrl, LogicalPosition, LogicalSize};
+// Tauri types used by the qanprism:// protocol proxy
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PageResponse {
@@ -368,7 +368,6 @@ fn fetch_api_context(
 pub fn run() {
   tauri::Builder::default()
     .register_uri_scheme_protocol("qanprism", move |_app, request| {
-        let uri = request.uri().to_string();
         let path = request.uri().path().strip_prefix('/').unwrap_or(request.uri().path());
         
         let mut target_url = String::new();
