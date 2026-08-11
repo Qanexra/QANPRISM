@@ -183,6 +183,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
     trimmedHistory.push(finalUrl);
     setHistory(trimmedHistory);
     setHistoryIndex(trimmedHistory.length - 1);
+    lastLoadedUrlRef.current = '';
     loadUrl(finalUrl);
   };
 
@@ -196,6 +197,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       const newIndex = historyIndex - 1;
       setHistoryIndex(newIndex);
       const prevUrl = history[newIndex];
+      lastLoadedUrlRef.current = '';
       loadUrl(prevUrl);
     }
   };
@@ -205,6 +207,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       const newIndex = historyIndex + 1;
       setHistoryIndex(newIndex);
       const nextUrl = history[newIndex];
+      lastLoadedUrlRef.current = '';
       loadUrl(nextUrl);
     }
   };
