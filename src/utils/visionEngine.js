@@ -6,12 +6,20 @@
  * 2. Visual Set-of-Marks (SoM) badge overlay generator for Vision models
  * 3. Element interaction dispatcher (click, type, scroll)
  * 4. Comprehensive click, form submit, and link interceptor so all page navigations route via Rust
+ * 5. Frame-busting / Clickjacking spoofing so login pages (LinkedIn, Google) run smoothly
  */
 
 export const INJECTED_AGENT_BRIDGE_SCRIPT = `
 (function() {
   if (window.__QANPRISM_BRIDGE_INITIALIZED__) return;
   window.__QANPRISM_BRIDGE_INITIALIZED__ = true;
+
+  // Frame-busting / Clickjacking spoofing
+  try {
+    Object.defineProperty(window, 'top', { get: function() { return window; }, configurable: true });
+    Object.defineProperty(window, 'parent', { get: function() { return window; }, configurable: true });
+    Object.defineProperty(window, 'frameElement', { get: function() { return null; }, configurable: true });
+  } catch(e) {}
 
   var elementMap = {};
   var overlayContainer = null;
