@@ -462,10 +462,33 @@ pub fn run() {
         let req_method = reqwest::Method::from_bytes(method_str.as_bytes()).unwrap_or(reqwest::Method::GET);
         let mut req_builder = client.request(req_method.clone(), &target_url);
 
+        let mut incoming_referer_url = String::new();
+        if let Some(r) = request.headers().get("referer") {
+            if let Ok(r_str) = r.to_str() {
+                if let Ok(ref_url) = reqwest::Url::parse(r_str) {
+                    let ref_path = ref_url.path().strip_prefix('/').unwrap_or("");
+                    if ref_path.starts_with("http%3A") || ref_path.starts_with("https%3A") {
+                        if let Ok(decoded_ref) = urlencoding::decode(ref_path) {
+                            incoming_referer_url = decoded_ref.into_owned();
+                        }
+                    } else if r_str.starts_with("http://") || r_str.starts_with("https://") {
+                        incoming_referer_url = r_str.to_string();
+                    }
+                }
+            }
+        }
+
         // Forward headers safely
         for (k, v) in request.headers() {
             let k_lower = k.as_str().to_lowercase();
-            if k_lower != "host" && k_lower != "origin" && k_lower != "referer" && k_lower != "sec-fetch-site" && k_lower != "sec-fetch-mode" && k_lower != "sec-fetch-dest" {
+            if k_lower != "host" 
+                && k_lower != "origin" 
+                && k_lower != "referer" 
+                && k_lower != "sec-fetch-site" 
+                && k_lower != "sec-fetch-mode" 
+                && k_lower != "sec-fetch-dest"
+                && k_lower != "content-length"
+            {
                 if let Ok(v_str) = v.to_str() {
                     req_builder = req_builder.header(k.as_str(), v_str);
                 }
@@ -478,7 +501,11 @@ pub fn run() {
             if req_method != reqwest::Method::GET && req_method != reqwest::Method::HEAD {
                 req_builder = req_builder.header("Origin", origin);
             }
-            req_builder = req_builder.header("Referer", &target_url);
+            if !incoming_referer_url.is_empty() {
+                req_builder = req_builder.header("Referer", incoming_referer_url);
+            } else {
+                req_builder = req_builder.header("Referer", &target_url);
+            }
         }
 
         // Forward the request body (critical for POST form submissions like login!)
@@ -499,38 +526,35 @@ pub fn run() {
                 .unwrap_or("")
                 .to_lowercase();
 
-            for (k, v) in response.headers() {
-                let k_lower = k.as_str().to_lowercase();
+            // Iterate all headers including multiple values per name (e.g. Set-Cookie)
+            for name in response.headers().keys() {
+                let k_lower = name.as_str().to_lowercase();
                 // Strip CORS blocks
-                if k_lower == "x-frame-options" || k_lower == "content-security-policy" || k_lower == "content-security-policy-report-only" || k_lower == "cross-origin-opener-policy" {
+                if k_lower == "x-frame-options" 
+                    || k_lower == "content-security-policy" 
+                    || k_lower == "content-security-policy-report-only" 
+                    || k_lower == "cross-origin-opener-policy" 
+                {
                     continue;
                 }
-                
-                // Sanitize Set-Cookie headers so browser stores them under qanprism.localhost
-                if k_lower == "set-cookie" {
-                    if let Ok(cookie_val) = v.to_str() {
-                        let sanitized = sanitize_set_cookie(cookie_val);
-                        builder = builder.header(k.as_str(), sanitized);
-                        continue;
-                    }
-                }
 
-                // Rewrite Location headers to keep redirects inside the proxy!
-                if k_lower == "location" {
-                    if let Ok(loc_str) = v.to_str() {
-                        let next_url = if let Ok(parsed_target) = reqwest::Url::parse(&target_url) {
-                            parsed_target.join(loc_str).map(|u| u.to_string()).unwrap_or_else(|_| loc_str.to_string())
+                for v in response.headers().get_all(name) {
+                    if let Ok(v_str) = v.to_str() {
+                        if k_lower == "set-cookie" {
+                            let sanitized = sanitize_set_cookie(v_str);
+                            builder = builder.header("set-cookie", sanitized);
+                        } else if k_lower == "location" {
+                            let next_url = if let Ok(parsed_target) = reqwest::Url::parse(&target_url) {
+                                parsed_target.join(v_str).map(|u| u.to_string()).unwrap_or_else(|_| v_str.to_string())
+                            } else {
+                                v_str.to_string()
+                            };
+                            let encoded_loc = urlencoding::encode(&next_url);
+                            builder = builder.header("location", format!("http://qanprism.localhost/{}", encoded_loc));
                         } else {
-                            loc_str.to_string()
-                        };
-                        // Encode the target URL and point it back to qanprism.localhost
-                        let encoded_loc = urlencoding::encode(&next_url);
-                        builder = builder.header(k.as_str(), format!("/{}", encoded_loc));
-                        continue;
+                            builder = builder.header(name.as_str(), v_str);
+                        }
                     }
-                }
-                if let Ok(v_str) = v.to_str() {
-                    builder = builder.header(k.as_str(), v_str);
                 }
             }
 
