@@ -171,10 +171,6 @@ function App() {
               </span>
             )}
           </button>
-
-          <button onClick={async () => { try { await appWindow.minimize(); } catch(e) { console.error(e); } }} title="Minimize"><Minus size={14} /></button>
-          <button onClick={async () => { try { await appWindow.toggleMaximize(); } catch(e) { console.error(e); } }} title="Maximize"><Square size={12} /></button>
-          <button onClick={async () => { try { await appWindow.close(); } catch(e) { console.error(e); } }} className="close-btn" title="Close"><X size={14} /></button>
         </div>
       </nav>
 
