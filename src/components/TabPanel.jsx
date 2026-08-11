@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { RefreshCw, ArrowLeft, ArrowRight, ShieldCheck, Eye, EyeOff } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
+
 import { Logger } from '../utils/logger';
 
 const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
@@ -81,22 +81,6 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       setHistoryIndex(newHistory.length - 1);
     }
   };
-    if (finalUrl !== tab.url) {
-      onUpdateUrl(finalUrl);
-    }
-    const trimmedHistory = history.slice(0, historyIndex + 1);
-    trimmedHistory.push(finalUrl);
-    setHistory(trimmedHistory);
-    setHistoryIndex(trimmedHistory.length - 1);
-    lastLoadedUrlRef.current = finalUrl;
-
-    invoke('navigate_tab_webview', { tabId: tab.id, url: finalUrl }).catch(e => console.warn(e));
-  };
-
-  const handleNavigate = (e) => {
-    e.preventDefault();
-    navigateTo(urlInput);
-  };
 
   const goBack = () => {
     if (historyIndex > 0) {
@@ -104,8 +88,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       setHistoryIndex(newIndex);
       const prevUrl = history[newIndex];
       setUrlInput(prevUrl);
-      onUpdateUrl(prevUrl);
-      invoke('navigate_tab_webview', { tabId: tab.id, url: prevUrl }).catch(e => console.warn(e));
+      onUpdateUrl(tab.id, prevUrl);
     }
   };
 
@@ -115,14 +98,14 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       setHistoryIndex(newIndex);
       const nextUrl = history[newIndex];
       setUrlInput(nextUrl);
-      onUpdateUrl(nextUrl);
-      invoke('navigate_tab_webview', { tabId: tab.id, url: nextUrl }).catch(e => console.warn(e));
+      onUpdateUrl(tab.id, nextUrl);
     }
   };
 
   const reload = () => {
-    const currentUrl = history[historyIndex] || tab.url;
-    invoke('navigate_tab_webview', { tabId: tab.id, url: currentUrl }).catch(e => console.warn(e));
+    if (containerRef.current) {
+      containerRef.current.src = containerRef.current.src;
+    }
   };
 
   const toggleVisionMarks = () => {
