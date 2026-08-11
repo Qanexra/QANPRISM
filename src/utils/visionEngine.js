@@ -58,26 +58,43 @@ export const INJECTED_AGENT_BRIDGE_SCRIPT = `
     }
   }, true);
 
-  // Intercept search engine and GET form submissions (e.g. Google, Bing, DuckDuckGo)
+  // Intercept all form submissions (POST logins, GET searches)
   document.addEventListener('submit', function(e) {
     var form = e.target;
     if (!form) return;
-    var method = (form.method || 'GET').toUpperCase();
-    if (method === 'GET') {
-      e.preventDefault();
-      e.stopPropagation();
-      try {
-        var formData = new FormData(form);
-        var params = new URLSearchParams(formData);
-        var actionUrl = form.action || window.location.href;
-        var separator = actionUrl.includes('?') ? '&' : '?';
-        var targetUrl = actionUrl + separator + params.toString();
-        window.parent.postMessage({ type: 'QANPRISM_NAVIGATE', url: targetUrl }, '*');
-      } catch(err) {
-        console.error("Form navigation intercept error:", err);
-      }
-      return false;
+
+    // Do not intercept if running on localhost (localhost processes forms natively)
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return;
     }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    var method = (form.method || 'GET').toUpperCase();
+    var actionUrl = form.action || window.location.href;
+
+    var formData = {};
+    var elements = form.elements;
+    for (var i = 0; i < elements.length; i++) {
+      var el = elements[i];
+      if (el.name && !el.disabled) {
+        if (el.type === 'checkbox' || el.type === 'radio') {
+          if (el.checked) formData[el.name] = el.value || 'on';
+        } else {
+          formData[el.name] = el.value || '';
+        }
+      }
+    }
+
+    window.parent.postMessage({
+      type: 'QANPRISM_FORM_SUBMIT',
+      url: actionUrl,
+      method: method,
+      formData: formData
+    }, '*');
+
+    return false;
   }, true);
 
   // Intercept window.open

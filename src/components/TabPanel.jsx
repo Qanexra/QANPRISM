@@ -147,6 +147,63 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
     }
   }, [tab.url, tab.title, onUpdateUrl, onUpdateTitle]);
 
+  const handleFormSubmit = useCallback(async (formUrl, method, formData) => {
+    setIsLoading(true);
+    try {
+      const res = await invoke('submit_form_context', {
+        url: formUrl,
+        method: method || 'POST',
+        formData: formData || {}
+      });
+
+      const rawHtml = typeof res === 'string' ? res : (res?.html || '');
+      const resolvedUrl = (typeof res === 'object' && res?.url) ? res.url : formUrl;
+
+      if (resolvedUrl && resolvedUrl !== tab.url) {
+        setUrlInput(resolvedUrl);
+        onUpdateUrl(resolvedUrl);
+      }
+
+      if (rawHtml && typeof rawHtml === 'string' && (rawHtml.includes('<html') || rawHtml.includes('<!DOCTYPE') || rawHtml.includes('<body'))) {
+        const titleMatch = rawHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
+        if (titleMatch && titleMatch[1]) {
+          const newTitle = titleMatch[1].trim();
+          if (newTitle !== tab.title) {
+            onUpdateTitle(newTitle);
+          }
+        }
+
+        const scriptPayload = `
+          <script>
+            ${INJECTED_AGENT_BRIDGE_SCRIPT}
+          </script>
+        `;
+
+        const baseTag = `<base href="${resolvedUrl}" target="_self">`;
+
+        let processedHtml = rawHtml;
+        if (processedHtml.includes('<head>')) {
+          processedHtml = processedHtml.replace('<head>', `<head>${baseTag}${scriptPayload}`);
+        } else if (processedHtml.includes('<html')) {
+          processedHtml = processedHtml.replace(/(<html[^>]*>)/i, `$1<head>${baseTag}${scriptPayload}</head>`);
+        } else {
+          processedHtml = `${baseTag}${scriptPayload}` + processedHtml;
+        }
+
+        setFallbackSrc('');
+        setSrcDoc(processedHtml);
+      } else {
+        setSrcDoc('');
+        setFallbackSrc(resolvedUrl || formUrl);
+      }
+    } catch (err) {
+      Logger.error('FormSubmit', `Form submit failed: ${err}`);
+      console.warn("submit_form_context failed:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [tab.url, tab.title, onUpdateUrl, onUpdateTitle]);
+
   useEffect(() => {
     if (tab.url && tab.url !== lastLoadedUrlRef.current) {
       loadUrl(tab.url);
@@ -163,6 +220,9 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       if (event.data.type === 'QANPRISM_NAVIGATE' && event.data.url) {
         Logger.info('Navigation', `Tab [${tab.id}] navigating to -> ${event.data.url}`);
         navigateTo(event.data.url);
+      } else if (event.data.type === 'QANPRISM_FORM_SUBMIT') {
+        Logger.info('FormSubmit', `Tab [${tab.id}] submitting ${event.data.method} form to -> ${event.data.url}`);
+        handleFormSubmit(event.data.url, event.data.method, event.data.formData);
       } else if (event.data.type === 'QANPRISM_LOG') {
         Logger.log(event.data.level || 'INFO', event.data.category || 'InPage', event.data.message || '', event.data.details);
       } else if (event.data.type === 'QP_BRIDGE_READY' && isActive) {
@@ -204,7 +264,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       window.removeEventListener('message', handleMessage);
       window.removeEventListener('QP_DISPATCH_TO_TAB', handleAgentCommand);
     };
-  }, [tab.id, isActive, history, historyIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tab.id, isActive, history, historyIndex, handleFormSubmit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const navigateTo = (url) => {
     const finalUrl = getFinalUrl(url);
