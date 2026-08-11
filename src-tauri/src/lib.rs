@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
+use tauri::{LogicalPosition, LogicalSize, WebviewBuilder, WebviewUrl, Window, Manager};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PageResponse {
@@ -47,10 +48,98 @@ fn fetch_page_context(url: String) -> Result<PageResponse, String> {
     })
 }
 
+#[tauri::command]
+fn create_or_update_tab_webview(
+    window: Window,
+    label: String,
+    url: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    let parsed_url = url.parse::<url::Url>().map_err(|e| e.to_string())?;
+    
+    if let Some(existing_webview) = window.get_webview(&label) {
+        existing_webview
+            .set_position(LogicalPosition::new(x, y))
+            .map_err(|e| e.to_string())?;
+        existing_webview
+            .set_size(LogicalSize::new(width, height))
+            .map_err(|e| e.to_string())?;
+        existing_webview.show().map_err(|e| e.to_string())?;
+        let _ = existing_webview.eval(&format!("window.location.href = '{}';", url));
+        return Ok(());
+    }
+
+    let webview_builder = WebviewBuilder::new(&label, WebviewUrl::External(parsed_url))
+        .auto_resize();
+
+    window
+        .add_child(
+            webview_builder,
+            LogicalPosition::new(x, y),
+            LogicalSize::new(width, height),
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn set_tab_webview_bounds(
+    window: Window,
+    label: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    if let Some(webview) = window.get_webview(&label) {
+        webview
+            .set_position(LogicalPosition::new(x, y))
+            .map_err(|e| e.to_string())?;
+        webview
+            .set_size(LogicalSize::new(width, height))
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_tab_webview_visibility(
+    window: Window,
+    label: String,
+    visible: bool,
+) -> Result<(), String> {
+    if let Some(webview) = window.get_webview(&label) {
+        if visible {
+            webview.show().map_err(|e| e.to_string())?;
+        } else {
+            webview.hide().map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn close_tab_webview(window: Window, label: String) -> Result<(), String> {
+    if let Some(webview) = window.get_webview(&label) {
+        let _ = webview.close();
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![fetch_page_context])
+    .invoke_handler(tauri::generate_handler![
+        fetch_page_context,
+        create_or_update_tab_webview,
+        set_tab_webview_bounds,
+        set_tab_webview_visibility,
+        close_tab_webview
+    ])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
