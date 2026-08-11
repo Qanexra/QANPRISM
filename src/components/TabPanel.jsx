@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { RefreshCw, ArrowLeft, ArrowRight, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { INJECTED_AGENT_BRIDGE_SCRIPT } from '../utils/visionEngine';
+import { Logger } from '../utils/logger';
 
 const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
   const [urlInput, setUrlInput] = useState(tab.url);
@@ -160,8 +161,12 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       if (event.source !== iframeRef.current?.contentWindow) return;
 
       if (event.data.type === 'QANPRISM_NAVIGATE' && event.data.url) {
+        Logger.info('Navigation', `Tab [${tab.id}] navigating to -> ${event.data.url}`);
         navigateTo(event.data.url);
+      } else if (event.data.type === 'QANPRISM_LOG') {
+        Logger.log(event.data.level || 'INFO', event.data.category || 'InPage', event.data.message || '', event.data.details);
       } else if (event.data.type === 'QP_BRIDGE_READY' && isActive) {
+        Logger.info('Bridge', `AI Vision Bridge initialized for Tab [${tab.id}]`);
         window.dispatchEvent(new CustomEvent('QP_ACTIVE_TAB_BRIDGE_READY', { detail: { tabId: tab.id } }));
       } else if ((event.data.type === 'QP_AGENT_STATE_RESPONSE' || event.data.type === 'QP_AGENT_ACTION_RESULT') && isActive) {
         window.dispatchEvent(new CustomEvent(event.data.type, { detail: event.data }));

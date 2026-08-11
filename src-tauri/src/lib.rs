@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PageResponse {
@@ -8,7 +11,18 @@ pub struct PageResponse {
     pub status: u16,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct LogEntry {
+    pub id: String,
+    pub timestamp: String,
+    pub level: String,     // INFO, WARN, ERROR, NETWORK, AGENT
+    pub category: String,  // Fetch, Navigation, Script, DOM, Agent
+    pub message: String,
+    pub details: Option<String>,
+}
+
 static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+static LOG_BUFFER: OnceLock<Mutex<Vec<LogEntry>>> = OnceLock::new();
 
 fn get_client() -> &'static reqwest::blocking::Client {
     CLIENT.get_or_init(|| {
@@ -21,11 +35,81 @@ fn get_client() -> &'static reqwest::blocking::Client {
     })
 }
 
+fn get_log_buffer() -> &'static Mutex<Vec<LogEntry>> {
+    LOG_BUFFER.get_or_init(|| Mutex::new(Vec::with_capacity(500)))
+}
+
+fn get_current_timestamp() -> String {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let secs = now.as_secs();
+    let millis = now.subsec_millis();
+    format!("{}.{:03}Z", secs, millis)
+}
+
+fn append_to_disk_log(entry: &LogEntry) {
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("qanprism_debug.log") {
+        let line = format!(
+            "[{}] [{}] [{}] {} {}\n",
+            entry.timestamp,
+            entry.level,
+            entry.category,
+            entry.message,
+            entry.details.as_deref().unwrap_or("")
+        );
+        let _ = file.write_all(line.as_bytes());
+    }
+}
+
+fn internal_log(level: &str, category: &str, message: &str, details: Option<&str>) {
+    let entry = LogEntry {
+        id: format!("log-{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos()),
+        timestamp: get_current_timestamp(),
+        level: level.to_string(),
+        category: category.to_string(),
+        message: message.to_string(),
+        details: details.map(|s| s.to_string()),
+    };
+
+    append_to_disk_log(&entry);
+
+    if let Ok(mut buffer) = get_log_buffer().lock() {
+        if buffer.len() >= 500 {
+            buffer.remove(0);
+        }
+        buffer.push(entry);
+    }
+}
+
+#[tauri::command]
+fn log_event(level: String, category: String, message: String, details: Option<String>) -> Result<(), String> {
+    internal_log(&level, &category, &message, details.as_deref());
+    Ok(())
+}
+
+#[tauri::command]
+fn get_debug_logs() -> Result<Vec<LogEntry>, String> {
+    let buffer = get_log_buffer().lock().map_err(|e| e.to_string())?;
+    Ok(buffer.clone())
+}
+
+#[tauri::command]
+fn clear_debug_logs() -> Result<(), String> {
+    if let Ok(mut buffer) = get_log_buffer().lock() {
+        buffer.clear();
+    }
+    let _ = std::fs::remove_file("qanprism_debug.log");
+    internal_log("INFO", "System", "Debug logs cleared by user", None);
+    Ok(())
+}
+
 #[tauri::command]
 fn fetch_page_context(url: String) -> Result<PageResponse, String> {
+    let start_time = Instant::now();
+    internal_log("NETWORK", "Fetch", &format!("Initiating request -> {}", url), None);
+
     let client = get_client();
 
-    let response = client.get(&url)
+    let response_result = client.get(&url)
         .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
         .header("Accept-Language", "en-US,en;q=0.9,vi;q=0.8")
         .header("Sec-Fetch-Dest", "document")
@@ -33,12 +117,45 @@ fn fetch_page_context(url: String) -> Result<PageResponse, String> {
         .header("Sec-Fetch-Site", "none")
         .header("Sec-Fetch-User", "?1")
         .header("Upgrade-Insecure-Requests", "1")
-        .send()
-        .map_err(|e| e.to_string())?;
+        .send();
+
+    let response = match response_result {
+        Ok(resp) => resp,
+        Err(err) => {
+            let elapsed = start_time.elapsed().as_millis();
+            let err_msg = format!("HTTP Request failed after {}ms: {}", elapsed, err);
+            internal_log("ERROR", "Fetch", &err_msg, Some(&url));
+            return Err(err_msg);
+        }
+    };
 
     let final_url = response.url().to_string();
     let status = response.status().as_u16();
-    let html = response.text().map_err(|e| e.to_string())?;
+    let elapsed = start_time.elapsed().as_millis();
+
+    let html = match response.text() {
+        Ok(text) => text,
+        Err(err) => {
+            let err_msg = format!("Failed to read response body: {}", err);
+            internal_log("ERROR", "Fetch", &err_msg, Some(&final_url));
+            return Err(err_msg);
+        }
+    };
+
+    let size_kb = (html.len() as f64) / 1024.0;
+    let log_level = if status >= 400 { "WARN" } else { "NETWORK" };
+    let redirect_info = if final_url != url {
+        Some(format!("Redirected from: {}", url))
+    } else {
+        None
+    };
+
+    internal_log(
+        log_level,
+        "Fetch",
+        &format!("Status: {} ({}ms, {:.1} KB) -> {}", status, elapsed, size_kb, final_url),
+        redirect_info.as_deref()
+    );
 
     Ok(PageResponse {
         html,
@@ -50,8 +167,14 @@ fn fetch_page_context(url: String) -> Result<PageResponse, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![fetch_page_context])
+    .invoke_handler(tauri::generate_handler![
+        fetch_page_context,
+        log_event,
+        get_debug_logs,
+        clear_debug_logs
+    ])
     .setup(|app| {
+      internal_log("INFO", "Lifecycle", "QanPrism Core Engine initialized", None);
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()

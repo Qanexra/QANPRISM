@@ -3,7 +3,9 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import TabPanel from './components/TabPanel';
 import AgentSidebar from './components/AgentSidebar';
 import MemoryMonitor from './components/MemoryMonitor';
-import { Minus, Square, X, Plus } from 'lucide-react';
+import DebugConsole from './components/DebugConsole';
+import { Logger } from './utils/logger';
+import { Minus, Square, X, Plus, Terminal } from 'lucide-react';
 
 const STORAGE_KEY = 'qanprism_tabs';
 
@@ -11,6 +13,16 @@ function App() {
   const [tabs, setTabs] = useState([]);
   const [currentTabId, setCurrentTabId] = useState(null);
   const [aiClient] = useState(null);
+  const [isDebugConsoleOpen, setIsDebugConsoleOpen] = useState(false);
+  const [errorCount, setErrorCount] = useState(0);
+
+  // Subscribe to logger error counts
+  useEffect(() => {
+    const unsubscribe = Logger.subscribe((_, count) => {
+      setErrorCount(count);
+    });
+    return unsubscribe;
+  }, []);
 
   // Restore tabs from localStorage on first load
   useEffect(() => {
@@ -124,7 +136,41 @@ function App() {
           </button>
         </div>
 
-        <div className="menu-actions">
+        <div className="menu-actions" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {/* Debug Console Toggle Button with Error Counter */}
+          <button
+            onClick={() => setIsDebugConsoleOpen(prev => !prev)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              backgroundColor: isDebugConsoleOpen ? '#334155' : 'transparent',
+              color: errorCount > 0 ? '#ef4444' : '#94a3b8',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '4px 8px',
+              fontSize: '11px',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+            title="Toggle Debug Diagnostics Console"
+          >
+            <Terminal size={14} />
+            <span>Logs</span>
+            {errorCount > 0 && (
+              <span style={{
+                backgroundColor: '#ef4444',
+                color: '#fff',
+                borderRadius: '8px',
+                padding: '0 4px',
+                fontSize: '9px',
+                fontWeight: 700
+              }}>
+                {errorCount}
+              </span>
+            )}
+          </button>
+
           <button onClick={async () => { try { await appWindow.minimize(); } catch(e) { console.error(e); } }} title="Minimize"><Minus size={14} /></button>
           <button onClick={async () => { try { await appWindow.toggleMaximize(); } catch(e) { console.error(e); } }} title="Maximize"><Square size={12} /></button>
           <button onClick={async () => { try { await appWindow.close(); } catch(e) { console.error(e); } }} className="close-btn" title="Close"><X size={14} /></button>
@@ -132,7 +178,7 @@ function App() {
       </nav>
 
       <div className="main-workspace">
-        {/* Main browser area with preserved tabs (no unmount flash or re-fetching) */}
+        {/* Main browser area with preserved tabs */}
         <div className="browser-content" style={{ flex: 1, position: 'relative', height: '100%', overflow: 'hidden' }}>
           {tabs.map(tab => (
             <div 
@@ -153,6 +199,12 @@ function App() {
               />
             </div>
           ))}
+
+          {/* Live Debug Diagnostics Console Drawer */}
+          <DebugConsole
+            isOpen={isDebugConsoleOpen}
+            onClose={() => setIsDebugConsoleOpen(false)}
+          />
         </div>
 
         {/* Right sidebar with AI agent */}

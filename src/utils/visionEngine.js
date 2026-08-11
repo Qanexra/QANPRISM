@@ -7,12 +7,35 @@
  * 3. Element interaction dispatcher (click, type, scroll)
  * 4. Search and link navigation interceptor for cross-origin browsing
  * 5. Frame-busting / Clickjacking spoofing so secure login pages run smoothly
+ * 6. In-page JavaScript error and diagnostic capture
  */
 
 export const INJECTED_AGENT_BRIDGE_SCRIPT = `
 (function() {
   if (window.__QANPRISM_BRIDGE_INITIALIZED__) return;
   window.__QANPRISM_BRIDGE_INITIALIZED__ = true;
+
+  // In-page error diagnostic logger
+  window.addEventListener('error', function(e) {
+    window.parent.postMessage({
+      type: 'QANPRISM_LOG',
+      level: 'ERROR',
+      category: 'InPageJS',
+      message: e.message || 'Script error',
+      details: (e.filename || '') + ':' + (e.lineno || '') + ':' + (e.colno || '')
+    }, '*');
+  });
+
+  window.addEventListener('unhandledrejection', function(e) {
+    var reason = (e.reason && e.reason.message) ? e.reason.message : String(e.reason);
+    window.parent.postMessage({
+      type: 'QANPRISM_LOG',
+      level: 'ERROR',
+      category: 'InPagePromise',
+      message: reason,
+      details: (e.reason && e.reason.stack) ? e.reason.stack : null
+    }, '*');
+  });
 
   // Frame-busting / Clickjacking spoofing
   try {
