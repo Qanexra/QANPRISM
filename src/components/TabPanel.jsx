@@ -69,8 +69,16 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
     setIsLoading(true);
 
     try {
-      // Fetch the raw webpage HTML via Rust reqwest engine (bypasses CORS & X-Frame-Options)
-      const rawHtml = await invoke('fetch_page_context', { url: finalUrl });
+      // Fetch webpage HTML via Rust reqwest engine with full browser headers
+      const res = await invoke('fetch_page_context', { url: finalUrl });
+      const rawHtml = typeof res === 'string' ? res : (res?.html || '');
+      const resolvedUrl = (typeof res === 'object' && res?.url) ? res.url : finalUrl;
+
+      // Update address bar if redirected (e.g. linkedin.com -> www.linkedin.com)
+      if (resolvedUrl && resolvedUrl !== finalUrl) {
+        setUrlInput(resolvedUrl);
+        onUpdateUrl(resolvedUrl);
+      }
 
       if (rawHtml && typeof rawHtml === 'string' && (rawHtml.includes('<html') || rawHtml.includes('<!DOCTYPE') || rawHtml.includes('<body'))) {
         // Extract title
@@ -90,7 +98,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
         `;
 
         // Base tag so relative resources (CSS, JS, images, fonts) resolve to origin domain
-        const baseTag = `<base href="${finalUrl}" target="_self">`;
+        const baseTag = `<base href="${resolvedUrl}" target="_self">`;
 
         let processedHtml = rawHtml;
         if (processedHtml.includes('<head>')) {
@@ -105,7 +113,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
         setSrcDoc(processedHtml);
       } else {
         setSrcDoc('');
-        setFallbackSrc(finalUrl);
+        setFallbackSrc(resolvedUrl || finalUrl);
       }
     } catch (err) {
       console.warn("fetch_page_context failed, falling back to direct iframe:", err);
