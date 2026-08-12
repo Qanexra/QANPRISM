@@ -72,6 +72,32 @@ fn clear_debug_logs() {
 // Native Multi-Webview Tab Engine (Ladybird / Tauri v2 Native Architecture)
 // ------------------------------------------------------------------------------------------------
 
+#[cfg(target_os = "windows")]
+fn bring_child_webviews_to_top(window: &tauri::window::Window) {
+    if let Ok(hwnd) = window.hwnd() {
+        let parent_hwnd = hwnd.0 as isize;
+        unsafe {
+            extern "system" fn enum_child(child: isize, _lparam: isize) -> i32 {
+                extern "system" {
+                    fn BringWindowToTop(h: isize) -> i32;
+                }
+                unsafe {
+                    let _ = BringWindowToTop(child);
+                }
+                1
+            }
+            extern "system" {
+                fn EnumChildWindows(
+                    hwnd_parent: isize,
+                    enum_func: Option<unsafe extern "system" fn(hwnd: isize, lparam: isize) -> i32>,
+                    lparam: isize,
+                ) -> i32;
+            }
+            let _ = EnumChildWindows(parent_hwnd, Some(enum_child), 0);
+        }
+    }
+}
+
 #[tauri::command]
 fn create_tab_webview(
     app: AppHandle,
@@ -82,62 +108,51 @@ fn create_tab_webview(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    internal_log("INFO", "TabEngine", &format!("Requesting native webview [{}] -> {} at ({},{},{},{})", tab_id, url, x, y, width, height), None);
+    internal_log("INFO", "TabEngine", &format!("Create request: [{}] -> {} at ({},{},{},{})", tab_id, url, x, y, width, height), None);
 
-    let app_clone = app.clone();
-    let tab_id_clone = tab_id.clone();
-    let url_clone = url.clone();
-
-    app.run_on_main_thread(move || {
-        if let Some(existing_webview) = app_clone.get_webview(&tab_id_clone) {
-            let _ = existing_webview.set_position(Position::Logical(LogicalPosition::new(x, y)));
-            let _ = existing_webview.set_size(Size::Logical(LogicalSize::new(width, height)));
-            if let Ok(parsed) = url_clone.parse() {
-                let _ = existing_webview.navigate(parsed);
-            }
-            return;
+    if let Some(existing_webview) = app.get_webview(&tab_id) {
+        let _ = existing_webview.set_position(Position::Logical(LogicalPosition::new(x, y)));
+        let _ = existing_webview.set_size(Size::Logical(LogicalSize::new(width, height)));
+        if let Ok(parsed) = url.parse() {
+            let _ = existing_webview.navigate(parsed);
         }
+        if let Some(window) = app.get_window("main") {
+            #[cfg(target_os = "windows")]
+            bring_child_webviews_to_top(&window);
+        }
+        return Ok(());
+    }
 
-        let window = match app_clone.get_window("main") {
-            Some(w) => w,
-            None => {
-                internal_log("ERROR", "TabEngine", "Main window not found", None);
-                return;
-            }
-        };
+    let window = app.get_window("main").ok_or_else(|| "Main window not found".to_string())?;
 
-        let parsed_url: url::Url = match url_clone.parse() {
+    let parsed_url: url::Url = match url.parse() {
+        Ok(u) => u,
+        Err(_) => match format!("https://{}", url).parse() {
             Ok(u) => u,
-            Err(_) => match format!("https://{}", url_clone).parse() {
-                Ok(u) => u,
-                Err(_) => match url::Url::parse("https://www.google.com") {
-                    Ok(u) => u,
-                    Err(e) => {
-                        internal_log("ERROR", "TabEngine", &format!("Failed to parse URL: {}", e), None);
-                        return;
-                    }
-                }
-            }
-        };
+            Err(_) => url::Url::parse("https://www.google.com").map_err(|e| e.to_string())?,
+        },
+    };
 
-        let webview_builder = WebviewBuilder::new(&tab_id_clone, WebviewUrl::External(parsed_url))
-            .auto_resize();
+    let webview_builder = WebviewBuilder::new(&tab_id, WebviewUrl::External(parsed_url))
+        .auto_resize();
 
-        match window.add_child(
-            webview_builder,
-            Position::Logical(LogicalPosition::new(x, y)),
-            Size::Logical(LogicalSize::new(width, height)),
-        ) {
-            Ok(_) => {
-                internal_log("INFO", "TabEngine", &format!("Native webview [{}] attached successfully at ({},{},{},{})", tab_id_clone, x, y, width, height), None);
-            }
-            Err(e) => {
-                internal_log("ERROR", "TabEngine", &format!("Failed to add child webview [{}]: {}", tab_id_clone, e), None);
-            }
+    match window.add_child(
+        webview_builder,
+        Position::Logical(LogicalPosition::new(x, y)),
+        Size::Logical(LogicalSize::new(width, height)),
+    ) {
+        Ok(_) => {
+            internal_log("INFO", "TabEngine", &format!("Native webview [{}] attached successfully at ({},{},{},{})", tab_id, x, y, width, height), None);
+            #[cfg(target_os = "windows")]
+            bring_child_webviews_to_top(&window);
+            Ok(())
         }
-    }).map_err(|e| format!("Failed to dispatch on main thread: {:?}", e))?;
-
-    Ok(())
+        Err(e) => {
+            let err = format!("Failed to add child webview [{}]: {}", tab_id, e);
+            internal_log("ERROR", "TabEngine", &err, None);
+            Err(err)
+        }
+    }
 }
 
 #[tauri::command]
@@ -149,24 +164,26 @@ fn set_tab_webview_active(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    let app_clone = app.clone();
-    app.run_on_main_thread(move || {
-        for (label, webview) in app_clone.webviews() {
-            if label == "main" {
-                continue; // Keep main UI webview intact
-            }
-
-            if label == active_tab_id {
-                let _ = webview.set_position(Position::Logical(LogicalPosition::new(x, y)));
-                let _ = webview.set_size(Size::Logical(LogicalSize::new(width, height)));
-                let _ = webview.set_focus();
-            } else {
-                // Position inactive tab off-screen
-                let _ = webview.set_position(Position::Logical(LogicalPosition::new(-20000.0, -20000.0)));
-                let _ = webview.set_size(Size::Logical(LogicalSize::new(100.0, 100.0)));
-            }
+    for (label, webview) in app.webviews() {
+        if label == "main" {
+            continue; // Keep main UI webview intact
         }
-    }).map_err(|e| format!("Failed to dispatch set_tab_webview_active: {:?}", e))?;
+
+        if label == active_tab_id {
+            let _ = webview.set_position(Position::Logical(LogicalPosition::new(x, y)));
+            let _ = webview.set_size(Size::Logical(LogicalSize::new(width, height)));
+            let _ = webview.set_focus();
+        } else {
+            // Position inactive tab off-screen
+            let _ = webview.set_position(Position::Logical(LogicalPosition::new(-20000.0, -20000.0)));
+            let _ = webview.set_size(Size::Logical(LogicalSize::new(100.0, 100.0)));
+        }
+    }
+
+    if let Some(window) = app.get_window("main") {
+        #[cfg(target_os = "windows")]
+        bring_child_webviews_to_top(&window);
+    }
 
     Ok(())
 }
@@ -180,91 +197,67 @@ fn update_tab_webview_bounds(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    let app_clone = app.clone();
-    app.run_on_main_thread(move || {
-        if let Some(webview) = app_clone.get_webview(&tab_id) {
-            let _ = webview.set_position(Position::Logical(LogicalPosition::new(x, y)));
-            let _ = webview.set_size(Size::Logical(LogicalSize::new(width, height)));
-        }
-    }).map_err(|e| format!("Failed to dispatch update_tab_webview_bounds: {:?}", e))?;
-
+    if let Some(webview) = app.get_webview(&tab_id) {
+        let _ = webview.set_position(Position::Logical(LogicalPosition::new(x, y)));
+        let _ = webview.set_size(Size::Logical(LogicalSize::new(width, height)));
+    }
+    if let Some(window) = app.get_window("main") {
+        #[cfg(target_os = "windows")]
+        bring_child_webviews_to_top(&window);
+    }
     Ok(())
 }
 
 #[tauri::command]
 fn navigate_tab_webview(app: AppHandle, tab_id: String, url: String) -> Result<(), String> {
     internal_log("INFO", "Navigation", &format!("Navigating tab [{}] -> {}", tab_id, url), None);
-    let app_clone = app.clone();
-    app.run_on_main_thread(move || {
-        if let Some(webview) = app_clone.get_webview(&tab_id) {
-            let parsed_url: Result<url::Url, _> = url.parse().or_else(|_| format!("https://{}", url).parse());
-            if let Ok(u) = parsed_url {
-                let _ = webview.navigate(u);
-            }
+    if let Some(webview) = app.get_webview(&tab_id) {
+        let parsed_url: Result<url::Url, _> = url.parse().or_else(|_| format!("https://{}", url).parse());
+        if let Ok(u) = parsed_url {
+            let _ = webview.navigate(u);
         }
-    }).map_err(|e| format!("Failed to dispatch navigate_tab_webview: {:?}", e))?;
-
+    }
     Ok(())
 }
 
 #[tauri::command]
 fn close_tab_webview(app: AppHandle, tab_id: String) -> Result<(), String> {
     internal_log("INFO", "TabEngine", &format!("Closing native webview [{}]", tab_id), None);
-    let app_clone = app.clone();
-    app.run_on_main_thread(move || {
-        if let Some(webview) = app_clone.get_webview(&tab_id) {
-            let _ = webview.close();
-        }
-    }).map_err(|e| format!("Failed to dispatch close_tab_webview: {:?}", e))?;
-
+    if let Some(webview) = app.get_webview(&tab_id) {
+        let _ = webview.close();
+    }
     Ok(())
 }
 
 #[tauri::command]
 fn tab_reload(app: AppHandle, tab_id: String) -> Result<(), String> {
-    let app_clone = app.clone();
-    app.run_on_main_thread(move || {
-        if let Some(webview) = app_clone.get_webview(&tab_id) {
-            let _ = webview.eval("window.location.reload();");
-        }
-    }).map_err(|e| format!("Failed to dispatch tab_reload: {:?}", e))?;
-
+    if let Some(webview) = app.get_webview(&tab_id) {
+        let _ = webview.eval("window.location.reload();");
+    }
     Ok(())
 }
 
 #[tauri::command]
 fn tab_go_back(app: AppHandle, tab_id: String) -> Result<(), String> {
-    let app_clone = app.clone();
-    app.run_on_main_thread(move || {
-        if let Some(webview) = app_clone.get_webview(&tab_id) {
-            let _ = webview.eval("window.history.back();");
-        }
-    }).map_err(|e| format!("Failed to dispatch tab_go_back: {:?}", e))?;
-
+    if let Some(webview) = app.get_webview(&tab_id) {
+        let _ = webview.eval("window.history.back();");
+    }
     Ok(())
 }
 
 #[tauri::command]
 fn tab_go_forward(app: AppHandle, tab_id: String) -> Result<(), String> {
-    let app_clone = app.clone();
-    app.run_on_main_thread(move || {
-        if let Some(webview) = app_clone.get_webview(&tab_id) {
-            let _ = webview.eval("window.history.forward();");
-        }
-    }).map_err(|e| format!("Failed to dispatch tab_go_forward: {:?}", e))?;
-
+    if let Some(webview) = app.get_webview(&tab_id) {
+        let _ = webview.eval("window.history.forward();");
+    }
     Ok(())
 }
 
 #[tauri::command]
 fn tab_eval_js(app: AppHandle, tab_id: String, script: String) -> Result<(), String> {
-    let app_clone = app.clone();
-    app.run_on_main_thread(move || {
-        if let Some(webview) = app_clone.get_webview(&tab_id) {
-            let _ = webview.eval(&script);
-        }
-    }).map_err(|e| format!("Failed to dispatch tab_eval_js: {:?}", e))?;
-
+    if let Some(webview) = app.get_webview(&tab_id) {
+        let _ = webview.eval(&script);
+    }
     Ok(())
 }
 
