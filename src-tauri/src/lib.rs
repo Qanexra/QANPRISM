@@ -72,28 +72,33 @@ fn clear_debug_logs() {
 // Native Multi-Webview Tab Engine (Ladybird / Tauri v2 Native Architecture)
 // ------------------------------------------------------------------------------------------------
 
-#[cfg(target_os = "windows")]
-fn bring_child_webviews_to_top(window: &tauri::window::Window) {
-    if let Ok(hwnd) = window.hwnd() {
-        let parent_hwnd = hwnd.0 as isize;
-        unsafe {
-            extern "system" fn enum_child(child: isize, _lparam: isize) -> i32 {
-                extern "system" {
-                    fn BringWindowToTop(h: isize) -> i32;
-                }
-                unsafe {
-                    let _ = BringWindowToTop(child);
-                }
-                1
+
+
+fn adjust_webviews_layout(app: &AppHandle, active_tab_id: &str, x: f64, y: f64, width: f64, height: f64) {
+    // 1. Constrain main UI webview so it ONLY covers the top bar (y: 0 to y: y)
+    if let Some(main_webview) = app.get_webview("main") {
+        if let Some(window) = app.get_window("main") {
+            if let Ok(win_size) = window.inner_size() {
+                let win_w = win_size.width as f64;
+                let top_h = if y > 0.0 { y } else { 96.0 };
+                let _ = main_webview.set_position(Position::Logical(LogicalPosition::new(0.0, 0.0)));
+                let _ = main_webview.set_size(Size::Logical(LogicalSize::new(win_w, top_h)));
             }
-            extern "system" {
-                fn EnumChildWindows(
-                    hwnd_parent: isize,
-                    enum_func: Option<unsafe extern "system" fn(hwnd: isize, lparam: isize) -> i32>,
-                    lparam: isize,
-                ) -> i32;
-            }
-            let _ = EnumChildWindows(parent_hwnd, Some(enum_child), 0);
+        }
+    }
+
+    // 2. Position active tab webview in the remaining content area
+    for (label, webview) in app.webviews() {
+        if label == "main" {
+            continue;
+        }
+        if label == active_tab_id {
+            let _ = webview.set_position(Position::Logical(LogicalPosition::new(x, y)));
+            let _ = webview.set_size(Size::Logical(LogicalSize::new(width, height)));
+            let _ = webview.set_focus();
+        } else {
+            let _ = webview.set_position(Position::Logical(LogicalPosition::new(-20000.0, -20000.0)));
+            let _ = webview.set_size(Size::Logical(LogicalSize::new(100.0, 100.0)));
         }
     }
 }
@@ -111,14 +116,9 @@ fn create_tab_webview(
     internal_log("INFO", "TabEngine", &format!("Create request: [{}] -> {} at ({},{},{},{})", tab_id, url, x, y, width, height), None);
 
     if let Some(existing_webview) = app.get_webview(&tab_id) {
-        let _ = existing_webview.set_position(Position::Logical(LogicalPosition::new(x, y)));
-        let _ = existing_webview.set_size(Size::Logical(LogicalSize::new(width, height)));
+        adjust_webviews_layout(&app, &tab_id, x, y, width, height);
         if let Ok(parsed) = url.parse() {
             let _ = existing_webview.navigate(parsed);
-        }
-        if let Some(window) = app.get_window("main") {
-            #[cfg(target_os = "windows")]
-            bring_child_webviews_to_top(&window);
         }
         return Ok(());
     }
@@ -160,8 +160,7 @@ fn create_tab_webview(
         ) {
             Ok(_) => {
                 internal_log("INFO", "TabEngine", &format!("Native webview [{}] attached successfully at ({},{},{},{})", tab_id_clone, x, y, width, height), None);
-                #[cfg(target_os = "windows")]
-                bring_child_webviews_to_top(&window);
+                adjust_webviews_layout(&app_clone, &tab_id_clone, x, y, width, height);
             }
             Err(e) => {
                 internal_log("ERROR", "TabEngine", &format!("Failed to add child webview [{}]: {}", tab_id_clone, e), None);
@@ -181,27 +180,7 @@ fn set_tab_webview_active(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    for (label, webview) in app.webviews() {
-        if label == "main" {
-            continue; // Keep main UI webview intact
-        }
-
-        if label == active_tab_id {
-            let _ = webview.set_position(Position::Logical(LogicalPosition::new(x, y)));
-            let _ = webview.set_size(Size::Logical(LogicalSize::new(width, height)));
-            let _ = webview.set_focus();
-        } else {
-            // Position inactive tab off-screen
-            let _ = webview.set_position(Position::Logical(LogicalPosition::new(-20000.0, -20000.0)));
-            let _ = webview.set_size(Size::Logical(LogicalSize::new(100.0, 100.0)));
-        }
-    }
-
-    if let Some(window) = app.get_window("main") {
-        #[cfg(target_os = "windows")]
-        bring_child_webviews_to_top(&window);
-    }
-
+    adjust_webviews_layout(&app, &active_tab_id, x, y, width, height);
     Ok(())
 }
 
@@ -214,14 +193,7 @@ fn update_tab_webview_bounds(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    if let Some(webview) = app.get_webview(&tab_id) {
-        let _ = webview.set_position(Position::Logical(LogicalPosition::new(x, y)));
-        let _ = webview.set_size(Size::Logical(LogicalSize::new(width, height)));
-    }
-    if let Some(window) = app.get_window("main") {
-        #[cfg(target_os = "windows")]
-        bring_child_webviews_to_top(&window);
-    }
+    adjust_webviews_layout(&app, &tab_id, x, y, width, height);
     Ok(())
 }
 
