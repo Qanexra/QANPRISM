@@ -23,11 +23,9 @@
 
 body {
   font-family: 'Inter', -apple-system, sans-serif;
-  background-color: var(--bg-dark);
+  background-color: transparent;
   color: var(--text-primary);
   overflow: hidden;
-  /* Premium dark background with a very subtle radial gradient */
-  background: radial-gradient(circle at top right, #1a1c29 0%, var(--bg-dark) 40%);
 }
 
 button {
@@ -45,6 +43,7 @@ button {
   flex-direction: column;
   height: 100vh;
   width: 100vw;
+  background: transparent;
 }
 
 .main-workspace {
@@ -52,6 +51,7 @@ button {
   flex: 1;
   overflow: hidden;
   position: relative;
+  background: transparent;
 }
 
 /* Top Bar */
@@ -61,7 +61,7 @@ button {
   justify-content: space-between;
   padding: 0 8px 0 16px;
   height: 48px;
-  background: var(--bg-dark);
+  background: #090a0f;
   border-bottom: 1px solid var(--border-color);
   -webkit-app-region: drag; /* Tauri drag region */
   gap: 16px;
@@ -186,7 +186,7 @@ button {
 .browser-content {
   flex: 1;
   position: relative;
-  background: #fff; /* White for webview placeholder */
+  background: transparent;
   overflow: hidden;
 }
 
@@ -198,12 +198,13 @@ button {
   height: 100%;
   display: flex;
   flex-direction: column;
+  background: transparent;
 }
 
 .address-bar-container {
   display: flex;
   padding: 8px 16px;
-  background: var(--bg-panel);
+  background: #0d0f17;
   border-bottom: 1px solid var(--border-color);
   gap: 12px;
   align-items: center;

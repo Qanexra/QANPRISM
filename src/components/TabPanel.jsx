@@ -239,7 +239,8 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
           position: 'relative', 
           width: '100%', 
           height: '100%', 
-          backgroundColor: '#1e1e2e' 
+          backgroundColor: 'transparent',
+          pointerEvents: 'none'
         }}
       />
     </div>
