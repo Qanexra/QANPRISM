@@ -3,6 +3,9 @@ import { RefreshCw, ArrowLeft, ArrowRight, ShieldCheck, Eye, EyeOff } from 'luci
 
 import { Logger } from '../utils/logger';
 
+const buildProxySrc = (url) =>
+  `http://qanprism.localhost/${encodeURIComponent(url || 'https://www.google.com')}`;
+
 const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
   const [urlInput, setUrlInput] = useState(tab.url);
   const [history, setHistory] = useState([tab.url]);
@@ -11,7 +14,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
   const [showVisionOverlay, setShowVisionOverlay] = useState(false);
   
   const containerRef = useRef(null);
-  const lastLoadedUrlRef = useRef('');
+  const lastLoadedUrlRef = useRef(tab.url);
 
   const isValidUrl = (str) => {
     const trimmed = (str || '').trim();
@@ -56,8 +59,19 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
     return finalUrl;
   };
 
+  // Sync URL input when tab.url changes from outside (e.g. restored from localStorage)
   useEffect(() => {
     setUrlInput(tab.url);
+  }, [tab.url]);
+
+  // Navigate the iframe when tab.url changes — imperatively, without destroying the iframe
+  useEffect(() => {
+    if (tab.url && tab.url !== lastLoadedUrlRef.current) {
+      lastLoadedUrlRef.current = tab.url;
+      if (containerRef.current) {
+        containerRef.current.src = buildProxySrc(tab.url);
+      }
+    }
   }, [tab.url]);
 
   const navigateTo = (newUrl) => {
@@ -163,8 +177,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%', backgroundColor: '#fff' }}>
         <iframe
           ref={containerRef}
-          key={tab.url || 'blank'}
-          src={`http://qanprism.localhost/${encodeURIComponent(tab.url || 'https://www.google.com')}`}
+          src={buildProxySrc(tab.url)}
           style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
           title={`Tab ${tab.id}`}
         />
