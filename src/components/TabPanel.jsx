@@ -64,14 +64,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
     const finalUrl = getFinalUrl(newUrl);
     setUrlInput(finalUrl);
     
-    // Check if we need to inject the bridge script for newly navigated URLs
-    if (finalUrl !== tab.url) {
-      if (containerRef.current && containerRef.current.contentWindow) {
-        containerRef.current.contentWindow.postMessage({ type: 'QP_INJECT_BRIDGE' }, '*');
-      }
-    }
-    
-    onUpdateUrl(tab.id, finalUrl);
+    onUpdateUrl(finalUrl);
     
     // Add to history if it's a new navigation
     if (finalUrl !== history[historyIndex]) {
@@ -88,7 +81,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       setHistoryIndex(newIndex);
       const prevUrl = history[newIndex];
       setUrlInput(prevUrl);
-      onUpdateUrl(tab.id, prevUrl);
+      onUpdateUrl(prevUrl);
     }
   };
 
@@ -98,7 +91,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       setHistoryIndex(newIndex);
       const nextUrl = history[newIndex];
       setUrlInput(nextUrl);
-      onUpdateUrl(tab.id, nextUrl);
+      onUpdateUrl(nextUrl);
     }
   };
 
@@ -170,6 +163,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%', backgroundColor: '#fff' }}>
         <iframe
           ref={containerRef}
+          key={tab.url || 'blank'}
           src={`http://qanprism.localhost/${encodeURIComponent(tab.url || 'https://www.google.com')}`}
           style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
           title={`Tab ${tab.id}`}
