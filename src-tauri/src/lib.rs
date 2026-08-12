@@ -123,36 +123,53 @@ fn create_tab_webview(
         return Ok(());
     }
 
-    let window = app.get_window("main").ok_or_else(|| "Main window not found".to_string())?;
+    let app_clone = app.clone();
+    let tab_id_clone = tab_id.clone();
+    let url_clone = url.clone();
 
-    let parsed_url: url::Url = match url.parse() {
-        Ok(u) => u,
-        Err(_) => match format!("https://{}", url).parse() {
+    tauri::async_runtime::spawn(async move {
+        let window = match app_clone.get_window("main") {
+            Some(w) => w,
+            None => {
+                internal_log("ERROR", "TabEngine", "Main window not found", None);
+                return;
+            }
+        };
+
+        let parsed_url: url::Url = match url_clone.parse() {
             Ok(u) => u,
-            Err(_) => url::Url::parse("https://www.google.com").map_err(|e| e.to_string())?,
-        },
-    };
+            Err(_) => match format!("https://{}", url_clone).parse() {
+                Ok(u) => u,
+                Err(_) => match url::Url::parse("https://www.google.com") {
+                    Ok(u) => u,
+                    Err(e) => {
+                        internal_log("ERROR", "TabEngine", &format!("Failed to parse URL: {}", e), None);
+                        return;
+                    }
+                },
+            },
+        };
 
-    let webview_builder = WebviewBuilder::new(&tab_id, WebviewUrl::External(parsed_url))
-        .auto_resize();
+        let webview_builder = WebviewBuilder::new(&tab_id_clone, WebviewUrl::External(parsed_url))
+            .auto_resize();
 
-    match window.add_child(
-        webview_builder,
-        Position::Logical(LogicalPosition::new(x, y)),
-        Size::Logical(LogicalSize::new(width, height)),
-    ) {
-        Ok(_) => {
-            internal_log("INFO", "TabEngine", &format!("Native webview [{}] attached successfully at ({},{},{},{})", tab_id, x, y, width, height), None);
-            #[cfg(target_os = "windows")]
-            bring_child_webviews_to_top(&window);
-            Ok(())
+        match window.add_child(
+            webview_builder,
+            Position::Logical(LogicalPosition::new(x, y)),
+            Size::Logical(LogicalSize::new(width, height)),
+        ) {
+            Ok(_) => {
+                internal_log("INFO", "TabEngine", &format!("Native webview [{}] attached successfully at ({},{},{},{})", tab_id_clone, x, y, width, height), None);
+                #[cfg(target_os = "windows")]
+                bring_child_webviews_to_top(&window);
+            }
+            Err(e) => {
+                internal_log("ERROR", "TabEngine", &format!("Failed to add child webview [{}]: {}", tab_id_clone, e), None);
+            }
         }
-        Err(e) => {
-            let err = format!("Failed to add child webview [{}]: {}", tab_id, e);
-            internal_log("ERROR", "TabEngine", &err, None);
-            Err(err)
-        }
-    }
+    });
+
+    Ok(())
 }
 
 #[tauri::command]
