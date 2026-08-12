@@ -483,24 +483,41 @@ pub fn run() {
             }
         }
 
-        // Forward headers safely (exclude cookie, host, origin, referer so reqwest handles cookie_store cleanly per-domain)
+        // Forward headers safely (exclude host, origin, referer, sec-fetch-* so reqwest handles per-domain cleanly)
+        // IMPORTANT: We capture the browser's Cookie header separately and merge it with reqwest's jar
+        let mut browser_cookies = String::new();
         for (k, v) in request.headers() {
             let k_lower = k.as_str().to_lowercase();
-            if k_lower != "host" 
-                && k_lower != "origin" 
-                && k_lower != "referer" 
-                && k_lower != "cookie"
-                && k_lower != "sec-fetch-site" 
-                && k_lower != "sec-fetch-mode" 
-                && k_lower != "sec-fetch-dest"
-                && k_lower != "content-length"
+            if k_lower == "cookie" {
+                // Capture browser cookies to merge with reqwest jar
+                if let Ok(cookie_str) = v.to_str() {
+                    browser_cookies = cookie_str.to_string();
+                }
+                continue;
+            }
+            if k_lower == "host" 
+                || k_lower == "origin" 
+                || k_lower == "referer" 
+                || k_lower == "sec-fetch-site" 
+                || k_lower == "sec-fetch-mode" 
+                || k_lower == "sec-fetch-dest"
+                || k_lower == "content-length"
             {
-                if let Ok(header_val) = reqwest::header::HeaderValue::from_bytes(v.as_bytes()) {
-                    if let Ok(header_name) = reqwest::header::HeaderName::from_bytes(k.as_str().as_bytes()) {
-                        req_builder = req_builder.header(header_name, header_val);
-                    }
+                continue;
+            }
+            if let Ok(header_val) = reqwest::header::HeaderValue::from_bytes(v.as_bytes()) {
+                if let Ok(header_name) = reqwest::header::HeaderName::from_bytes(k.as_str().as_bytes()) {
+                    req_builder = req_builder.header(header_name, header_val);
                 }
             }
+        }
+
+        // Merge browser cookies with reqwest's internal cookie jar
+        // The browser has cookies set via sanitized Set-Cookie (JSESSIONID, li_at, csrf tokens, etc.)
+        // reqwest's jar may have additional cookies from server-only Set-Cookie responses
+        // We need BOTH for APIs like LinkedIn's Voyager that check csrf-token == JSESSIONID
+        if !browser_cookies.is_empty() {
+            req_builder = req_builder.header("Cookie", &browser_cookies);
         }
 
         // Add proper origin and referer for the target site to prevent CSRF blocks
