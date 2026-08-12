@@ -74,20 +74,44 @@ fn clear_debug_logs() {
 
 
 
-fn adjust_webviews_layout(app: &AppHandle, active_tab_id: &str, x: f64, y: f64, width: f64, height: f64) {
-    // 1. Constrain main UI webview so it ONLY covers the top bar (y: 0 to y: y)
-    if let Some(main_webview) = app.get_webview("main") {
-        if let Some(window) = app.get_window("main") {
-            if let Ok(win_size) = window.inner_size() {
-                let win_w = win_size.width as f64;
-                let top_h = if y > 0.0 { y } else { 96.0 };
-                let _ = main_webview.set_position(Position::Logical(LogicalPosition::new(0.0, 0.0)));
-                let _ = main_webview.set_size(Size::Logical(LogicalSize::new(win_w, top_h)));
+#[cfg(target_os = "windows")]
+fn bring_child_webviews_to_top(app: &AppHandle) {
+    if let Some(window) = app.get_window("main") {
+        if let Ok(hwnd) = window.hwnd() {
+            let parent_hwnd = hwnd.0 as isize;
+            unsafe {
+                extern "system" fn enum_child(child: isize, _lparam: isize) -> i32 {
+                    extern "system" {
+                        fn SetWindowPos(
+                            hwnd: isize,
+                            hwnd_insert_after: isize,
+                            x: i32,
+                            y: i32,
+                            cx: i32,
+                            cy: i32,
+                            flags: u32,
+                        ) -> i32;
+                    }
+                    // HWND_TOP = 0, SWP_NOMOVE = 0x0002, SWP_NOSIZE = 0x0001, SWP_SHOWWINDOW = 0x0040
+                    unsafe {
+                        let _ = SetWindowPos(child, 0, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040);
+                    }
+                    1
+                }
+                extern "system" {
+                    fn EnumChildWindows(
+                        hwnd_parent: isize,
+                        enum_func: Option<unsafe extern "system" fn(hwnd: isize, lparam: isize) -> i32>,
+                        lparam: isize,
+                    ) -> i32;
+                }
+                let _ = EnumChildWindows(parent_hwnd, Some(enum_child), 0);
             }
         }
     }
+}
 
-    // 2. Position active tab webview in the remaining content area
+fn adjust_webviews_layout(app: &AppHandle, active_tab_id: &str, x: f64, y: f64, width: f64, height: f64) {
     for (label, webview) in app.webviews() {
         if label == "main" {
             continue;
@@ -101,6 +125,9 @@ fn adjust_webviews_layout(app: &AppHandle, active_tab_id: &str, x: f64, y: f64, 
             let _ = webview.set_size(Size::Logical(LogicalSize::new(100.0, 100.0)));
         }
     }
+
+    #[cfg(target_os = "windows")]
+    bring_child_webviews_to_top(app);
 }
 
 #[tauri::command]
