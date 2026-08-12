@@ -483,21 +483,14 @@ pub fn run() {
             }
         }
 
-        // Forward headers safely (exclude host, origin, referer, sec-fetch-* so reqwest handles per-domain cleanly)
-        // IMPORTANT: We capture the browser's Cookie header separately and merge it with reqwest's jar
-        let mut browser_cookies = String::new();
+        // Forward headers safely (exclude host, origin, referer, cookie, accept-encoding, sec-fetch-* so reqwest handles per-domain cookie jar & decompression cleanly)
         for (k, v) in request.headers() {
             let k_lower = k.as_str().to_lowercase();
-            if k_lower == "cookie" {
-                // Capture browser cookies to merge with reqwest jar
-                if let Ok(cookie_str) = v.to_str() {
-                    browser_cookies = cookie_str.to_string();
-                }
-                continue;
-            }
             if k_lower == "host" 
                 || k_lower == "origin" 
                 || k_lower == "referer" 
+                || k_lower == "cookie"
+                || k_lower == "accept-encoding"
                 || k_lower == "sec-fetch-site" 
                 || k_lower == "sec-fetch-mode" 
                 || k_lower == "sec-fetch-dest"
@@ -510,14 +503,6 @@ pub fn run() {
                     req_builder = req_builder.header(header_name, header_val);
                 }
             }
-        }
-
-        // Merge browser cookies with reqwest's internal cookie jar
-        // The browser has cookies set via sanitized Set-Cookie (JSESSIONID, li_at, csrf tokens, etc.)
-        // reqwest's jar may have additional cookies from server-only Set-Cookie responses
-        // We need BOTH for APIs like LinkedIn's Voyager that check csrf-token == JSESSIONID
-        if !browser_cookies.is_empty() {
-            req_builder = req_builder.header("Cookie", &browser_cookies);
         }
 
         // Add proper origin and referer for the target site to prevent CSRF blocks
@@ -544,7 +529,9 @@ pub fn run() {
             let status_code = response.status().as_u16();
 
             let mut builder = tauri::http::Response::builder()
-                .status(status_code);
+                .status(status_code)
+                .header("access-control-allow-origin", "*")
+                .header("access-control-allow-credentials", "true");
 
             // Capture content-type for HTML rewriting decision later
             let builder_content_type = response.headers()
@@ -556,11 +543,15 @@ pub fn run() {
             // Iterate all headers including multiple values per name (e.g. Set-Cookie)
             for name in response.headers().keys() {
                 let k_lower = name.as_str().to_lowercase();
-                // Strip CORS blocks
+                // Strip CORS, CSP, compression, and content-length headers
+                // (reqwest has already decompressed bytes, and Tauri calculates body length)
                 if k_lower == "x-frame-options" 
                     || k_lower == "content-security-policy" 
                     || k_lower == "content-security-policy-report-only" 
                     || k_lower == "cross-origin-opener-policy" 
+                    || k_lower == "content-encoding"
+                    || k_lower == "content-length"
+                    || k_lower == "transfer-encoding"
                 {
                     continue;
                 }
@@ -604,13 +595,24 @@ pub fn run() {
 (function() {
   var currentTarget = "TARGET_URL_PLACEHOLDER";
   
+  function getCurrentBase() {
+    try {
+      var p = window.location.pathname.replace(/^\//, '');
+      if (p.toLowerCase().startsWith('http%3a') || p.toLowerCase().startsWith('https%3a')) {
+        return decodeURIComponent(p);
+      }
+    } catch(e) {}
+    return currentTarget;
+  }
+
   function proxyUrl(url) {
     if (!url || typeof url !== 'string') return url;
     var s = url.trim();
     if (s.startsWith('http://qanprism.localhost/')) return s;
     if (s.startsWith('javascript:') || s.startsWith('data:') || s.startsWith('blob:') || s.startsWith('#')) return url;
     try {
-      var absolute = new URL(s, currentTarget).href;
+      var base = getCurrentBase();
+      var absolute = new URL(s, base).href;
       return 'http://qanprism.localhost/' + encodeURIComponent(absolute);
     } catch(e) {
       if (s.startsWith('https://') || s.startsWith('http://')) {
@@ -627,8 +629,11 @@ pub fn run() {
       try {
         if (typeof input === 'string') {
           input = proxyUrl(input);
-        } else if (input && input.url) {
-          input = new Request(proxyUrl(input.url), input);
+        } else if (input instanceof Request) {
+          var newUrl = proxyUrl(input.url);
+          input = new Request(newUrl, input);
+        } else if (input && typeof input.url === 'string') {
+          input.url = proxyUrl(input.url);
         }
       } catch(e) {}
       return origFetch.call(this, input, init);
@@ -638,11 +643,9 @@ pub fn run() {
   // Intercept XMLHttpRequest.open
   var origOpen = XMLHttpRequest.prototype.open;
   if (origOpen) {
-    XMLHttpRequest.prototype.open = function(method, url) {
-      try {
-        arguments[1] = proxyUrl(url);
-      } catch(e) {}
-      return origOpen.apply(this, arguments);
+    XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
+      var proxied = proxyUrl(url);
+      return origOpen.call(this, method, proxied, async !== undefined ? async : true, user, password);
     };
   }
 
