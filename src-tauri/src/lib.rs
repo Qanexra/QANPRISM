@@ -529,9 +529,7 @@ pub fn run() {
             let status_code = response.status().as_u16();
 
             let mut builder = tauri::http::Response::builder()
-                .status(status_code)
-                .header("access-control-allow-origin", "*")
-                .header("access-control-allow-credentials", "true");
+                .status(status_code);
 
             // Capture content-type for HTML rewriting decision later
             let builder_content_type = response.headers()
@@ -595,24 +593,13 @@ pub fn run() {
 (function() {
   var currentTarget = "TARGET_URL_PLACEHOLDER";
   
-  function getCurrentBase() {
-    try {
-      var p = window.location.pathname.replace(/^\//, '');
-      if (p.toLowerCase().startsWith('http%3a') || p.toLowerCase().startsWith('https%3a')) {
-        return decodeURIComponent(p);
-      }
-    } catch(e) {}
-    return currentTarget;
-  }
-
   function proxyUrl(url) {
     if (!url || typeof url !== 'string') return url;
     var s = url.trim();
     if (s.startsWith('http://qanprism.localhost/')) return s;
     if (s.startsWith('javascript:') || s.startsWith('data:') || s.startsWith('blob:') || s.startsWith('#')) return url;
     try {
-      var base = getCurrentBase();
-      var absolute = new URL(s, base).href;
+      var absolute = new URL(s, currentTarget).href;
       return 'http://qanprism.localhost/' + encodeURIComponent(absolute);
     } catch(e) {
       if (s.startsWith('https://') || s.startsWith('http://')) {
@@ -629,11 +616,8 @@ pub fn run() {
       try {
         if (typeof input === 'string') {
           input = proxyUrl(input);
-        } else if (input instanceof Request) {
-          var newUrl = proxyUrl(input.url);
-          input = new Request(newUrl, input);
-        } else if (input && typeof input.url === 'string') {
-          input.url = proxyUrl(input.url);
+        } else if (input && input.url) {
+          input = new Request(proxyUrl(input.url), input);
         }
       } catch(e) {}
       return origFetch.call(this, input, init);
@@ -643,9 +627,11 @@ pub fn run() {
   // Intercept XMLHttpRequest.open
   var origOpen = XMLHttpRequest.prototype.open;
   if (origOpen) {
-    XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
-      var proxied = proxyUrl(url);
-      return origOpen.call(this, method, proxied, async !== undefined ? async : true, user, password);
+    XMLHttpRequest.prototype.open = function(method, url) {
+      try {
+        arguments[1] = proxyUrl(url);
+      } catch(e) {}
+      return origOpen.apply(this, arguments);
     };
   }
 
