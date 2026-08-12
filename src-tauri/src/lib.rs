@@ -91,9 +91,11 @@ fn bring_child_webviews_to_top(app: &AppHandle) {
                             cy: i32,
                             flags: u32,
                         ) -> i32;
+                        fn ShowWindow(hwnd: isize, n_cmd_show: i32) -> i32;
                     }
-                    // HWND_TOP = 0, SWP_NOMOVE = 0x0002, SWP_NOSIZE = 0x0001, SWP_SHOWWINDOW = 0x0040
                     unsafe {
+                        let _ = ShowWindow(child, 5); // SW_SHOW
+                        // HWND_TOP = 0, SWP_NOMOVE = 0x0002, SWP_NOSIZE = 0x0001, SWP_SHOWWINDOW = 0x0040
                         let _ = SetWindowPos(child, 0, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040);
                     }
                     1
@@ -104,8 +106,16 @@ fn bring_child_webviews_to_top(app: &AppHandle) {
                         enum_func: Option<unsafe extern "system" fn(hwnd: isize, lparam: isize) -> i32>,
                         lparam: isize,
                     ) -> i32;
+                    fn RedrawWindow(
+                        hwnd: isize,
+                        lprc_update: *const std::ffi::c_void,
+                        hrgn_update: isize,
+                        flags: u32,
+                    ) -> i32;
                 }
                 let _ = EnumChildWindows(parent_hwnd, Some(enum_child), 0);
+                // RDW_INVALIDATE = 0x0001, RDW_UPDATENOW = 0x0100, RDW_ALLCHILDREN = 0x0080
+                let _ = RedrawWindow(parent_hwnd, std::ptr::null(), 0, 0x0001 | 0x0100 | 0x0080);
             }
         }
     }
@@ -188,6 +198,16 @@ fn create_tab_webview(
             Ok(_) => {
                 internal_log("INFO", "TabEngine", &format!("Native webview [{}] attached successfully at ({},{},{},{})", tab_id_clone, x, y, width, height), None);
                 adjust_webviews_layout(&app_clone, &tab_id_clone, x, y, width, height);
+
+                // Auto-refresh layout during initial controller spin-up so page renders immediately without tab switching
+                let app_c = app_clone.clone();
+                let tid = tab_id_clone.clone();
+                std::thread::spawn(move || {
+                    for delay_ms in [50, 150, 300, 600, 1000] {
+                        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                        adjust_webviews_layout(&app_c, &tid, x, y, width, height);
+                    }
+                });
             }
             Err(e) => {
                 internal_log("ERROR", "TabEngine", &format!("Failed to add child webview [{}]: {}", tab_id_clone, e), None);
@@ -233,6 +253,8 @@ fn navigate_tab_webview(app: AppHandle, tab_id: String, url: String) -> Result<(
             let _ = webview.navigate(u);
         }
     }
+    #[cfg(target_os = "windows")]
+    bring_child_webviews_to_top(&app);
     Ok(())
 }
 
