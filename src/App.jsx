@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
 import TabPanel from './components/TabPanel';
 import AgentSidebar from './components/AgentSidebar';
 import MemoryMonitor from './components/MemoryMonitor';
@@ -81,6 +82,7 @@ function App() {
   };
 
   const closeTab = (tabId) => {
+    invoke('close_tab_webview', { tabId }).catch(() => {});
     const newTabs = tabs.filter(tab => tab.id !== tabId);
     setTabs(newTabs);
     if (currentTabId === tabId) {

@@ -1,20 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { RefreshCw, ArrowLeft, ArrowRight, ShieldCheck, Eye, EyeOff } from 'lucide-react';
-
-import { Logger } from '../utils/logger';
-
-const buildProxySrc = (url) =>
-  `http://qanprism.localhost/${encodeURIComponent(url || 'https://www.google.com')}`;
+import { invoke } from '@tauri-apps/api/core';
 
 const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
   const [urlInput, setUrlInput] = useState(tab.url);
   const [history, setHistory] = useState([tab.url]);
   const [historyIndex, setHistoryIndex] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
   const [showVisionOverlay, setShowVisionOverlay] = useState(false);
   
-  const containerRef = useRef(null);
-  const lastLoadedUrlRef = useRef(tab.url);
+  const viewportRef = useRef(null);
+  const createdRef = useRef(false);
 
   const isValidUrl = (str) => {
     const trimmed = (str || '').trim();
@@ -59,28 +54,89 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
     return finalUrl;
   };
 
-  // Sync URL input when tab.url changes from outside (e.g. restored from localStorage)
+  // Sync URL input when tab.url changes
   useEffect(() => {
     setUrlInput(tab.url);
   }, [tab.url]);
 
-  // Navigate the iframe when tab.url changes — imperatively, without destroying the iframe
-  useEffect(() => {
-    if (tab.url && tab.url !== lastLoadedUrlRef.current) {
-      lastLoadedUrlRef.current = tab.url;
-      if (containerRef.current) {
-        containerRef.current.src = buildProxySrc(tab.url);
+  // Synchronize native webview position and size with the DOM viewport
+  const syncBounds = useCallback(() => {
+    if (!viewportRef.current) return;
+    const rect = viewportRef.current.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    if (isActive) {
+      if (!createdRef.current) {
+        createdRef.current = true;
+        invoke('create_tab_webview', {
+          tabId: tab.id,
+          url: tab.url || 'https://www.google.com',
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height)
+        }).catch(err => console.error('Failed to create tab webview:', err));
+      } else {
+        invoke('set_tab_webview_active', {
+          activeTabId: tab.id,
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height)
+        }).catch(err => console.error('Failed to set tab webview active:', err));
       }
     }
-  }, [tab.url]);
+  }, [isActive, tab.id, tab.url]);
+
+  // Sync bounds on mount, active state change, and tab changes
+  useEffect(() => {
+    // Small timeout to allow layout flow to settle
+    const timer = setTimeout(() => {
+      syncBounds();
+    }, 50);
+
+    return () => clearTimeout(timer);
+  }, [syncBounds]);
+
+  // ResizeObserver to track layout changes (window resize, sidebar toggle)
+  useEffect(() => {
+    if (!viewportRef.current) return;
+
+    const observer = new ResizeObserver(() => {
+      if (isActive && viewportRef.current) {
+        const rect = viewportRef.current.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          invoke('update_tab_webview_bounds', {
+            tabId: tab.id,
+            x: Math.round(rect.left),
+            y: Math.round(rect.top),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height)
+          }).catch(() => {});
+        }
+      }
+    });
+
+    observer.observe(viewportRef.current);
+    window.addEventListener('resize', syncBounds);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', syncBounds);
+    };
+  }, [isActive, syncBounds, tab.id]);
 
   const navigateTo = (newUrl) => {
     const finalUrl = getFinalUrl(newUrl);
     setUrlInput(finalUrl);
     
+    invoke('navigate_tab_webview', {
+      tabId: tab.id,
+      url: finalUrl
+    }).catch(err => console.error('Failed to navigate native webview:', err));
+
     onUpdateUrl(finalUrl);
     
-    // Add to history if it's a new navigation
     if (finalUrl !== history[historyIndex]) {
       const newHistory = history.slice(0, historyIndex + 1);
       newHistory.push(finalUrl);
@@ -90,6 +146,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
   };
 
   const goBack = () => {
+    invoke('tab_go_back', { tabId: tab.id }).catch(() => {});
     if (historyIndex > 0) {
       const newIndex = historyIndex - 1;
       setHistoryIndex(newIndex);
@@ -100,6 +157,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
   };
 
   const goForward = () => {
+    invoke('tab_go_forward', { tabId: tab.id }).catch(() => {});
     if (historyIndex < history.length - 1) {
       const newIndex = historyIndex + 1;
       setHistoryIndex(newIndex);
@@ -110,9 +168,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
   };
 
   const reload = () => {
-    if (containerRef.current) {
-      containerRef.current.src = containerRef.current.src;
-    }
+    invoke('tab_reload', { tabId: tab.id }).catch(() => {});
   };
 
   const toggleVisionMarks = () => {
@@ -125,6 +181,7 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
 
   return (
     <div className="tab-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
+      {/* Chrome-style Address Bar */}
       <div className="address-bar-container" style={{ zIndex: 10 }}>
         <button
           onClick={goBack}
@@ -170,25 +227,21 @@ const TabPanel = ({ tab, isActive, onClose, onUpdateUrl, onUpdateTitle }) => {
       </div>
       
       {/* 
-        Native Iframe Architecture (QanPrism Protocol)
-        This replaces the buggy Windows Native Webview Z-ordering with a rock solid
-        React-native iframe that proxies natively through Rust.
+        Native Viewport Anchor (Ladybird / Tauri v2 Native Architecture)
+        This DOM element acts as the precise geometric anchor for the native Windows WebView2 child view.
+        No iframes, no URL proxy rewriting, no CORS/cookie conflicts.
       */}
-      <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%', backgroundColor: '#fff' }}>
-        <iframe
-          ref={containerRef}
-          src={buildProxySrc(tab.url)}
-          style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-          title={`Tab ${tab.id}`}
-        />
-        
-        {/* Loading Overlay */}
-        {isLoading && (
-          <div className="tab-loading-overlay">
-            <div className="spinner"></div>
-          </div>
-        )}
-      </div>
+      <div 
+        ref={viewportRef}
+        className="native-webview-viewport"
+        style={{ 
+          flex: 1, 
+          position: 'relative', 
+          width: '100%', 
+          height: '100%', 
+          backgroundColor: '#1e1e2e' 
+        }}
+      />
     </div>
   );
 };
